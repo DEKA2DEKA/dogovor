@@ -1,0 +1,55 @@
+{% extends 'base.html' %}
+{% block title %}Доска договоров{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-3">
+    <h4 class="mb-0"><i class="bi bi-kanban"></i> Доска движения договоров</h4>
+    <div>
+        <button class="btn btn-outline-primary btn-sm" onclick="document.getElementById('fileInput').click()">
+            <i class="bi bi-upload"></i> Загрузить Excel
+        </button>
+        <button class="btn btn-outline-danger btn-sm" onclick="clearAll()">
+            <i class="bi bi-trash"></i> Очистить
+        </button>
+    </div>
+</div>
+
+<div id="dropZone" class="drop-zone">
+    <div class="drop-zone-text">
+        <i class="bi bi-cloud-upload fs-1"></i>
+        <p class="mb-0">Перетащите файл Excel сюда или нажмите кнопку «Загрузить Excel»</p>
+    </div>
+    <div class="drop-zone-progress d-none">
+        <div class="spinner-border text-primary" role="status"></div>
+        <p class="mb-0 mt-2">Импорт данных...</p>
+    </div>
+</div>
+<input type="file" id="fileInput" accept=".xlsx,.xls" style="display:none">
+
+<div class="kanban-board" id="kanbanBoard">
+    {% for key, label in statuses.items() %}
+    <div class="kanban-column" data-status="{{ key }}">
+        <div class="column-header" style="background: {{ status_colors.get(key, '#6c757d') }}">
+            <h6>{{ label }}</h6>
+            <span class="badge bg-light text-dark count-badge">{{ board[key]|length }}</span>
+        </div>
+        <div class="column-body" id="column-{{ key }}">
+            {% for contract in board[key] %}
+            <div class="card contract-card" data-id="{{ contract.id }}" onclick="showContractDetail({{ contract.id }})">
+                <div class="card-body p-2">
+                    <div class="d-flex justify-content-between">
+                        <strong class="text-truncate">{{ contract.number or 'б/н' }}</strong>
+                        <small class="text-muted ms-1">{{ contract.amount|round(2) }} ₽</small>
+                    </div>
+                    <small class="d-block text-truncate">{{ contract.counterparty }}</small>
+                    <small class="d-block text-truncate text-muted">{{ contract.name }}</small>
+                </div>
+            </div>
+            {% endfor %}
+        </div>
+    </div>
+    {% endfor %}
+</div>
+
+{% include 'modals.html' %}
+{% endblock %}

@@ -1,0 +1,167 @@
+{% extends 'base.html' %}
+{% block title %}База договоров{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-3">
+    <h4 class="mb-0"><i class="bi bi-table"></i> База договоров</h4>
+    <span class="badge bg-secondary fs-6" id="totalCount">{{ contracts|length }} договоров</span>
+</div>
+
+<div class="card mb-3">
+    <div class="card-body">
+        <div class="row g-2 align-items-end">
+            <div class="col-md-3">
+                <label class="form-label small">Поиск</label>
+                <input type="text" class="form-control form-control-sm" id="filterSearch" placeholder="Номер, контрагент, предмет...">
+            </div>
+            <div class="col-md-2">
+                <label class="form-label small">Статус</label>
+                <select class="form-select form-select-sm" id="filterStatus">
+                    <option value="">Все</option>
+                    {% for key, label in statuses.items() %}
+                    <option value="{{ key }}">{{ label }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div class="col-md-2">
+                <label class="form-label small">Сумма от</label>
+                <input type="number" class="form-control form-control-sm" id="filterAmountMin" placeholder="0">
+            </div>
+            <div class="col-md-2">
+                <label class="form-label small">Сумма до</label>
+                <input type="number" class="form-control form-control-sm" id="filterAmountMax" placeholder="∞">
+            </div>
+            <div class="col-md-2">
+                <label class="form-label small">Дата получения с</label>
+                <input type="date" class="form-control form-control-sm" id="filterDateFrom">
+            </div>
+            <div class="col-md-1">
+                <label class="form-label small">&nbsp;</label>
+                <button class="btn btn-sm btn-outline-secondary w-100" onclick="resetFilters()">Сброс</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="table-responsive">
+    <table class="table table-hover table-sm align-middle" id="contractsTable">
+        <thead class="table-dark">
+            <tr>
+                <th>№</th>
+                <th>Номер договора</th>
+                <th>Контрагент</th>
+                <th>Предмет</th>
+                <th>Сумма</th>
+                <th>Статус</th>
+                <th>Ответственный</th>
+                <th>Дата получения</th>
+                <th>Дата подписания</th>
+                <th></th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for c in contracts %}
+            <tr data-contract-id="{{ c.id }}">
+                <td>{{ loop.index }}</td>
+                <td><a href="#" onclick="showContractDetail({{ c.id }}); return false">{{ c.number or 'б/н' }}</a></td>
+                <td>{{ c.counterparty }}</td>
+                <td class="text-truncate" style="max-width:200px">{{ c.subject }}</td>
+                <td>{{ "%.2f"|format(c.amount) }} ₽</td>
+                <td><span class="badge status-badge">{{ c.status_display }}</span></td>
+                <td>{{ c.responsible }}</td>
+                <td>{{ c.received_date[:10] if c.received_date else '' }}</td>
+                <td>{{ c.signing_date[:10] if c.signing_date else '' }}</td>
+                <td>
+                    <div class="dropdown">
+                        <button class="btn btn-sm btn-outline-secondary" data-bs-toggle="dropdown"><i class="bi bi-three-dots"></i></button>
+                        <ul class="dropdown-menu dropdown-menu-end">
+                            <li><a class="dropdown-item" href="#" onclick="showContractDetail({{ c.id }}); return false"><i class="bi bi-eye"></i> Просмотр</a></li>
+                            <li><hr class="dropdown-divider"></li>
+                            <li><a class="dropdown-item text-danger" href="#" onclick="deleteContract({{ c.id }}); return false"><i class="bi bi-trash"></i> Удалить</a></li>
+                        </ul>
+                    </div>
+                </td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</div>
+
+{% include 'modals.html' %}
+{% endblock %}
+
+{% block scripts %}
+<script>
+document.addEventListener('DOMContentLoaded', function () {
+    const searchInput = document.getElementById('filterSearch');
+    const statusSelect = document.getElementById('filterStatus');
+    const amountMin = document.getElementById('filterAmountMin');
+    const amountMax = document.getElementById('filterAmountMax');
+    const dateFrom = document.getElementById('filterDateFrom');
+    const dateTo = document.getElementById('filterDateTo');
+
+    function applyFilters() {
+        const params = new URLSearchParams();
+        if (searchInput.value) params.set('search', searchInput.value);
+        if (statusSelect.value) params.set('status', statusSelect.value);
+        if (amountMin.value) params.set('amount_min', amountMin.value);
+        if (amountMax.value) params.set('amount_max', amountMax.value);
+        if (dateFrom.value) params.set('date_from', dateFrom.value);
+        if (dateTo.value) params.set('date_to', dateTo.value);
+
+        fetch(`/api/contracts?${params.toString()}`)
+            .then(r => r.json())
+            .then(data => {
+                const tbody = document.querySelector('#contractsTable tbody');
+                const totalSpan = document.getElementById('totalCount');
+                totalSpan.textContent = data.length + ' договоров';
+
+                if (data.length === 0) {
+                    tbody.innerHTML = '<tr><td colspan="10" class="text-center text-muted py-4">Договоры не найдены</td></tr>';
+                    return;
+                }
+
+                tbody.innerHTML = data.map((c, i) => `
+                    <tr data-contract-id="${c.id}">
+                        <td>${i + 1}</td>
+                        <td><a href="#" onclick="showContractDetail(${c.id}); return false">${c.number || 'б/н'}</a></td>
+                        <td>${c.counterparty}</td>
+                        <td class="text-truncate" style="max-width:200px">${c.subject}</td>
+                        <td>${c.amount.toFixed(2)} ₽</td>
+                        <td><span class="badge status-badge">${c.status_display}</span></td>
+                        <td>${c.responsible}</td>
+                        <td>${c.received_date ? c.received_date.slice(0, 10) : ''}</td>
+                        <td>${c.signing_date ? c.signing_date.slice(0, 10) : ''}</td>
+                        <td>
+                            <div class="dropdown">
+                                <button class="btn btn-sm btn-outline-secondary" data-bs-toggle="dropdown"><i class="bi bi-three-dots"></i></button>
+                                <ul class="dropdown-menu dropdown-menu-end">
+                                    <li><a class="dropdown-item" href="#" onclick="showContractDetail(${c.id}); return false"><i class="bi bi-eye"></i> Просмотр</a></li>
+                                    <li><hr class="dropdown-divider"></li>
+                                    <li><a class="dropdown-item text-danger" href="#" onclick="deleteContract(${c.id}); return false"><i class="bi bi-trash"></i> Удалить</a></li>
+                                </ul>
+                            </div>
+                        </td>
+                    </tr>
+                `).join('');
+            });
+    }
+
+    [searchInput, statusSelect, amountMin, amountMax, dateFrom, dateTo].forEach(el => {
+        if (el) el.addEventListener('input', applyFilters);
+        if (el && el.tagName === 'SELECT') el.addEventListener('change', applyFilters);
+    });
+});
+
+function resetFilters() {
+    document.getElementById('filterSearch').value = '';
+    document.getElementById('filterStatus').value = '';
+    document.getElementById('filterAmountMin').value = '';
+    document.getElementById('filterAmountMax').value = '';
+    document.getElementById('filterDateFrom').value = '';
+    const dateTo = document.getElementById('filterDateTo');
+    if (dateTo) dateTo.value = '';
+    document.querySelector('#filterSearch').dispatchEvent(new Event('input'));
+}
+</script>
+{% endblock %}
