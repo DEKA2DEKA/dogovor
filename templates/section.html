@@ -10,10 +10,21 @@
 </nav>
 
 <div class="d-flex justify-content-between align-items-center mb-3">
-    <h4 class="mb-0">
-        <i class="bi bi-kanban"></i> {{ section.label }}
-        <small class="text-muted fs-6">— доска движения</small>
-    </h4>
+    <div class="d-flex align-items-center gap-2">
+        {% if prev_section_key %}
+        <a href="{{ url_for('section_detail', section_key=prev_section_key) }}" class="btn btn-outline-secondary btn-sm">
+            <i class="bi bi-chevron-left"></i> {{ all_sections[prev_section_key].label }}
+        </a>
+        {% endif %}
+        <h4 class="mb-0 ms-2">
+            <i class="bi bi-kanban"></i> {{ section.label }}
+        </h4>
+        {% if next_section_key %}
+        <a href="{{ url_for('section_detail', section_key=next_section_key) }}" class="btn btn-outline-secondary btn-sm ms-2">
+            {{ all_sections[next_section_key].label }} <i class="bi bi-chevron-right"></i>
+        </a>
+        {% endif %}
+    </div>
     <div>
         <button class="btn btn-outline-primary btn-sm" onclick="document.getElementById('fileInput').click()">
             <i class="bi bi-upload"></i> Загрузить Excel
@@ -27,14 +38,16 @@
 <input type="file" id="fileInput" accept=".xlsx,.xls" style="display:none">
 
 <div class="kanban-board" id="kanbanBoard">
-    {% for step in section.steps %}
-    <div class="kanban-column" data-section="{{ section_key }}" data-step="{{ step }}">
-        <div class="column-header" style="background: {{ section.step_colors[step] }}">
-            <h6>{{ section.step_labels[step] }}</h6>
-            <span class="badge bg-light text-dark count-badge">{{ board[step]|length }}</span>
+    {% for col_key, col_label, col_color in display_columns %}
+    <div class="kanban-column {% if col_key.startswith('__incoming__') %}column-incoming{% elif col_key.startswith('__next__') %}column-next{% endif %}"
+         data-section="{{ section_key }}" data-step="{{ col_key }}">
+        <div class="column-header" style="background: {{ col_color }};
+            {% if col_key.startswith('__incoming__') %}opacity:0.85{% elif col_key.startswith('__next__') %}opacity:0.85{% endif %}">
+            <h6>{{ col_label }}</h6>
+            <span class="badge bg-light text-dark count-badge">{{ board.get(col_key, [])|length }}</span>
         </div>
-        <div class="column-body" id="column-{{ step }}">
-            {% for contract in board[step] %}
+        <div class="column-body" id="column-{{ col_key }}">
+            {% for contract in board.get(col_key, []) %}
             <div class="card contract-card" data-id="{{ contract.id }}" onclick="showContractDetail({{ contract.id }})">
                 <div class="card-body p-2">
                     <div class="d-flex justify-content-between">
@@ -45,9 +58,6 @@
                     <small class="d-block text-truncate text-muted">{{ contract.name }}</small>
                     {% if contract.contract_type == 'additional' %}
                     <span class="badge bg-warning text-dark" style="font-size:0.6rem">ДС</span>
-                    {% endif %}
-                    {% if contract.sections|length > 1 %}
-                    <span class="badge bg-info" style="font-size:0.6rem">+{{ contract.sections|length - 1 }}</span>
                     {% endif %}
                 </div>
             </div>

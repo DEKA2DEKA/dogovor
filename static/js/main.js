@@ -96,6 +96,41 @@ function showContractDetail(id) {
         });
 }
 
+function getPrevStep(sectionKey, currentStep) {
+    const sec = SECTIONS[sectionKey];
+    if (!sec) return null;
+    if (currentStep === '__incoming__') return null;
+    const idx = sec.steps.indexOf(currentStep);
+    if (idx > 0) return sec.steps[idx - 1];
+    return '__incoming__';
+}
+
+function getNextStep(sectionKey, currentStep) {
+    const sec = SECTIONS[sectionKey];
+    if (!sec) return null;
+    if (currentStep === '__incoming__') return sec.steps[0];
+    const idx = sec.steps.indexOf(currentStep);
+    if (idx < sec.steps.length - 1) return sec.steps[idx + 1];
+    return '__next_section__';
+}
+
+const NEXT_SECTION_MAP = { conclusion: 'execution', execution: 'modification', modification: 'storage', storage: 'archive', archive: null };
+
+function moveStep(contractId, sectionKey, direction) {
+    fetch(`/api/contract/${contractId}/move`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ section: sectionKey, direction: direction })
+    })
+    .then(r => r.json())
+    .then(() => {
+        const modal = bootstrap.Modal.getInstance(document.getElementById('contractModal'));
+        if (modal) modal.hide();
+        location.reload();
+    })
+    .catch(err => alert('Ошибка: ' + err.message));
+}
+
 function renderContractDetail(c) {
     document.getElementById('modalTitle').textContent = `Договор ${c.number || 'б/н'}`;
 
@@ -105,6 +140,8 @@ function renderContractDetail(c) {
         const steps = c.section_steps || {};
         const curStep = steps[sk] || sec.steps[0];
         const curIdx = sec.steps.indexOf(curStep);
+        const hasPrev = curStep !== '__incoming__' && (curIdx > 0 || curStep === sec.steps[0]);
+        const hasNext = curStep === '__incoming__' || curIdx < sec.steps.length - 1 || NEXT_SECTION_MAP[sk];
 
         const timelineHtml = sec.steps.map((s, i) => {
             let cls = '';
@@ -121,9 +158,13 @@ function renderContractDetail(c) {
                     <h6 class="mb-0" style="color:${sec.step_colors[curStep] || '#6c757d'}">
                         <i class="bi bi-circle-fill" style="font-size:0.6rem"></i> ${sec.label}
                     </h6>
-                    <span class="badge" style="background:${sec.step_colors[curStep] || '#6c757d'}">
-                        ${sec.step_labels[curStep] || curStep}
-                    </span>
+                    <div class="d-flex gap-1">
+                        ${hasPrev ? `<button class="btn btn-sm btn-outline-secondary py-0 px-1" onclick="event.stopPropagation(); moveStep(${c.id}, '${sk}', 'backward')" title="Предыдущий шаг"><i class="bi bi-chevron-left"></i></button>` : ''}
+                        <span class="badge" style="background:${sec.step_colors[curStep] || '#6c757d'}">
+                            ${sec.step_labels[curStep] || (curStep === '__incoming__' ? 'Входящие' : curStep)}
+                        </span>
+                        ${hasNext ? `<button class="btn btn-sm btn-outline-primary py-0 px-1" onclick="event.stopPropagation(); moveStep(${c.id}, '${sk}', 'forward')" title="Следующий шаг"><i class="bi bi-chevron-right"></i></button>` : ''}
+                    </div>
                 </div>
                 <div class="timeline" style="padding-left:20px">
                     ${timelineHtml}

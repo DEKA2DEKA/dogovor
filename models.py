@@ -14,6 +14,22 @@ db = SQLAlchemy()
 
 SECTIONS_ORDER = ['conclusion', 'execution', 'modification', 'storage', 'archive']
 
+NEXT_SECTION = {
+    'conclusion': 'execution',
+    'execution': 'modification',
+    'modification': 'storage',
+    'storage': 'archive',
+    'archive': None,
+}
+
+PREV_SECTION = {
+    'execution': 'conclusion',
+    'modification': 'execution',
+    'storage': 'modification',
+    'archive': 'storage',
+    'conclusion': None,
+}
+
 SECTIONS = {
     'conclusion': {
         'label': 'Заключение',
@@ -98,6 +114,31 @@ SECTIONS = {
 
 def get_section(section_key):
     return SECTIONS.get(section_key)
+
+
+def get_next_section_key(section_key):
+    return NEXT_SECTION.get(section_key)
+
+
+def get_prev_section_key(section_key):
+    return PREV_SECTION.get(section_key)
+
+
+def get_display_columns(section_key):
+    """Return list of (step_key, label, color) for kanban columns including virtual ones."""
+    sec = get_section(section_key)
+    if not sec:
+        return []
+    columns = [('__incoming__', 'Входящие', '#6c757d')]
+    for step in sec['steps']:
+        columns.append((step, sec['step_labels'].get(step, step), sec['step_colors'].get(step, '#6c757d')))
+    next_key = get_next_section_key(section_key)
+    if next_key and next_key in SECTIONS:
+        nsec = SECTIONS[next_key]
+        first_step = nsec['steps'][0]
+        label = f'→ {nsec["step_labels"].get(first_step, first_step)}'
+        columns.append((f'__next__{first_step}', label, nsec['step_colors'].get(first_step, '#6c757d')))
+    return columns
 
 
 def default_section_steps():

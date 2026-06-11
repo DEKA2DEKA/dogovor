@@ -13,7 +13,8 @@ from datetime import datetime, timedelta
 from flask import Flask, render_template, request, jsonify
 from sqlalchemy import or_
 from werkzeug.utils import secure_filename
-from models import db, Contract, SECTIONS, SECTIONS_ORDER, get_section
+from models import (db, Contract, SECTIONS, SECTIONS_ORDER, get_section,
+                     get_next_section_key, get_prev_section_key, get_display_columns)
 
 app = Flask(__name__)
 app.config['SECRET_KEY'] = os.environ.get('SECRET_KEY', 'dogovor-secret-key')
@@ -421,21 +422,40 @@ def section_detail(section_key):
                                sections_order=SECTIONS_ORDER, stats=get_section_stats())
 
     sec = get_section(section_key)
+    next_key = get_next_section_key(section_key)
+    display_columns = get_display_columns(section_key)
+
     like = f'%"{section_key}"%'
     contracts = Contract.query.filter(Contract.sections.like(like)).all()
 
-    board_data = {step: [] for step in sec['steps']}
+    board_data = {}
+    for col_key, _, _ in display_columns:
+        board_data[col_key] = []
+
     for c in contracts:
         steps = c.get_section_steps_dict()
         step = steps.get(section_key, sec['steps'][0])
         if step in board_data:
             board_data[step].append(c.to_dict())
         else:
-            board_data[sec['steps'][0]].append(c.to_dict())
+            board_data.get(sec['steps'][0], []).append(c.to_dict())
+
+    if next_key:
+        nsec = get_section(next_key)
+        first_step = nsec['steps'][0]
+        next_col = f'__next__{first_step}'
+        next_like = f'%"{next_key}"%'
+        next_contracts = Contract.query.filter(Contract.sections.like(next_like)).all()
+        for c in next_contracts:
+            nsteps = c.get_section_steps_dict()
+            if nsteps.get(next_key) == first_step:
+                board_data.setdefault(next_col, []).append(c.to_dict())
 
     return render_template('section.html', section_key=section_key,
                            section=sec, board=board_data, all_sections=SECTIONS,
-                           sections_order=SECTIONS_ORDER)
+                           sections_order=SECTIONS_ORDER, display_columns=display_columns,
+                           next_section_key=next_key,
+                           prev_section_key=get_prev_section_key(section_key))
 
 
 @app.route('/database')
@@ -510,18 +530,56 @@ def api_move_contract(contract_id):
 
     data = request.get_json()
     section_key = data.get('section')
-    new_step = data.get('step')
+    direction = data.get('direction', 'forward')
 
     if not section_key or section_key not in SECTIONS:
         return jsonify({'error': 'Некорректный раздел'}), 400
     sec = get_section(section_key)
-    if new_step not in sec['steps']:
-        return jsonify({'error': 'Некорректный шаг'}), 400
 
     steps = contract.get_section_steps_dict()
-    steps[section_key] = new_step
-    contract.section_steps = json.dumps(steps)
+    current_step = steps.get(section_key, sec['steps'][0])
 
+    if direction == 'backward':
+        if current_step == '__incoming__':
+            return jsonify({'error': 'Это начальная позиция'}), 400
+        steps_list = sec['steps']
+        if current_step in steps_list:
+            idx = steps_list.index(current_step)
+            if idx > 0:
+                steps[section_key] = steps_list[idx - 1]
+            else:
+                steps[section_key] = '__incoming__'
+        contract.section_steps = json.dumps(steps)
+        contract.status = steps.get(section_key, sec['steps'][0])
+        db.session.commit()
+        return jsonify(contract.to_dict())
+
+    steps_list = sec['steps']
+    next_key = get_next_section_key(section_key)
+
+    # Determine new step
+    if current_step == '__incoming__':
+        new_step = steps_list[0]
+        steps[section_key] = new_step
+    elif current_step in steps_list:
+        idx = steps_list.index(current_step)
+        if idx < len(steps_list) - 1:
+            new_step = steps_list[idx + 1]
+            steps[section_key] = new_step
+        elif next_key:
+            nsec = get_section(next_key)
+            if next_key not in steps:
+                steps[next_key] = '__incoming__'
+                contract.sections = json.dumps(
+                    list(dict.fromkeys(contract.get_sections_list() + [next_key]))
+                )
+            new_step = steps.get(section_key)
+        else:
+            return jsonify({'error': 'Это финальный шаг'}), 400
+    else:
+        return jsonify({'error': 'Некорректный шаг'}), 400
+
+    contract.section_steps = json.dumps(steps)
     sections = contract.get_sections_list()
     if section_key not in sections:
         sections.append(section_key)
@@ -544,7 +602,7 @@ def api_move_contract(contract_id):
     if date_field and not getattr(contract, date_field):
         setattr(contract, date_field, date_now)
 
-    contract.status = new_step
+    contract.status = steps.get(section_key, sec['steps'][0])
     db.session.commit()
     return jsonify(contract.to_dict())
 
