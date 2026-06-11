@@ -11,16 +11,27 @@
 <body>
     <nav class="navbar navbar-expand-lg navbar-dark bg-dark">
         <div class="container-fluid">
-            <a class="navbar-brand" href="{{ url_for('index') }}">
-                <i class="bi bi-file-text"></i> Бюро по работе с договорами
+            <a class="navbar-brand" href="{{ url_for('info') }}">
+                <i class="bi bi-file-earmark-text"></i> Бюро по работе с договорами
             </a>
             <div class="navbar-nav">
-                <a class="nav-link {% if request.endpoint == 'index' %}active{% endif %}" href="{{ url_for('index') }}">
+                <a class="nav-link {% if request.endpoint == 'info' %}active{% endif %}" href="{{ url_for('info') }}">
+                    <i class="bi bi-info-circle"></i> Информация
+                </a>
+                <a class="nav-link {% if request.endpoint == 'board' %}active{% endif %}" href="{{ url_for('board') }}">
                     <i class="bi bi-kanban"></i> Доска
                 </a>
                 <a class="nav-link {% if request.endpoint == 'database' %}active{% endif %}" href="{{ url_for('database') }}">
-                    <i class="bi bi-table"></i> База договоров
+                    <i class="bi bi-table"></i> База
                 </a>
+                <a class="nav-link {% if request.endpoint == 'reports' %}active{% endif %}" href="{{ url_for('reports') }}">
+                    <i class="bi bi-bar-chart"></i> Отчёты
+                </a>
+            </div>
+            <div class="navbar-nav ms-auto">
+                <button class="btn btn-outline-danger btn-sm nav-stop-btn" onclick="stopServer()">
+                    <i class="bi bi-stop-circle"></i> Остановить сервер
+                </button>
             </div>
         </div>
     </nav>

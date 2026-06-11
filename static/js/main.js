@@ -277,3 +277,27 @@ function clearAll() {
     btn.addEventListener('click', handler);
     modal.show();
 }
+
+function stopServer() {
+    const body = document.getElementById('confirmBody');
+    body.textContent = 'Остановить сервер? Все несохранённые данные будут потеряны.';
+    const modal = new bootstrap.Modal(document.getElementById('confirmModal'));
+    const btn = document.getElementById('confirmBtn');
+    btn.className = 'btn btn-danger';
+
+    const handler = () => {
+        fetch('/api/shutdown', { method: 'POST' })
+            .then(r => r.json())
+            .then(data => {
+                alert(data.message || 'Сервер остановлен');
+            })
+            .catch(() => {
+                alert('Сервер остановлен. Закройте это окно.');
+            });
+        btn.removeEventListener('click', handler);
+        btn.className = 'btn btn-danger';
+    };
+
+    btn.addEventListener('click', handler);
+    modal.show();
+}

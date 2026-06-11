@@ -3,9 +3,10 @@
 Flask-приложение для отслеживания жизненного цикла договоров:
 получение, оформление, согласование, подписание, архивирование.
 
-Версия: 1.0.0
+Версия: 1.1.0
 """
 
+import json
 import os
 import pandas as pd
 from datetime import datetime
@@ -24,6 +25,18 @@ os.makedirs(app.config['UPLOAD_FOLDER'], exist_ok=True)
 
 db.init_app(app)
 
+@app.template_filter('format_date')
+def format_date_filter(value):
+    from datetime import datetime as dt
+    months = {
+        1: 'января', 2: 'февраля', 3: 'марта', 4: 'апреля',
+        5: 'мая', 6: 'июня', 7: 'июля', 8: 'августа',
+        9: 'сентября', 10: 'октября', 11: 'ноября', 12: 'декабря'
+    }
+    now = dt.now()
+    return f'{now.day} {months[now.month]} {now.year} г.'
+
+
 STATUS_COLORS = {
     'received': '#4A90D9',
     'processing': '#00B4D8',
@@ -34,6 +47,114 @@ STATUS_COLORS = {
     'archive': '#2A9D8F',
     'destroyed': '#6C757D',
 }
+
+SAMPLE_DATA_PATH = os.path.join(os.path.dirname(__file__), 'sample_data.json')
+
+SAVED_REPORTS_PATH = os.path.join(os.path.dirname(__file__), 'saved_reports.json')
+
+DEFAULT_REPORTS = [
+    {
+        "id": "report_active",
+        "title": "Активные договоры",
+        "description": "Все договоры в работе (кроме архивных и уничтоженных)",
+        "icon": "bi-activity",
+        "color": "#0d6efd",
+        "filters": {"status_neg": ["archive", "destroyed"]}
+    },
+    {
+        "id": "report_approval",
+        "title": "На согласовании",
+        "description": "Договоры, требующие согласования",
+        "icon": "bi-clock-history",
+        "color": "#F4A261",
+        "filters": {"status": "approval"}
+    },
+    {
+        "id": "report_signing",
+        "title": "На подписание",
+        "description": "Договоры ожидающие подписания руководителем",
+        "icon": "bi-pen",
+        "color": "#9B5DE5",
+        "filters": {"status": "signing"}
+    },
+    {
+        "id": "report_archive",
+        "title": "Архив договоров",
+        "description": "Завершённые договоры в архиве",
+        "icon": "bi-archive",
+        "color": "#2A9D8F",
+        "filters": {"status": "archive"}
+    },
+    {
+        "id": "report_large",
+        "title": "Крупные договоры",
+        "description": "Договоры на сумму свыше 1 000 000 ₽",
+        "icon": "bi-cash-stack",
+        "color": "#198754",
+        "filters": {"amount_min": 1000000}
+    },
+    {
+        "id": "report_month",
+        "title": "Договоры за последний месяц",
+        "description": "Поступившие за последние 30 дней",
+        "icon": "bi-calendar-event",
+        "color": "#E76F51",
+        "filters": {"period": "month"}
+    },
+]
+
+
+def load_saved_reports():
+    if os.path.exists(SAVED_REPORTS_PATH):
+        with open(SAVED_REPORTS_PATH, 'r', encoding='utf-8') as f:
+            return json.load(f)
+    return DEFAULT_REPORTS
+
+
+def save_saved_reports(reports):
+    with open(SAVED_REPORTS_PATH, 'w', encoding='utf-8') as f:
+        json.dump(reports, f, ensure_ascii=False, indent=2)
+
+
+def load_sample_data():
+    if not os.path.exists(SAMPLE_DATA_PATH):
+        return
+    if Contract.query.count() > 0:
+        return
+    with open(SAMPLE_DATA_PATH, 'r', encoding='utf-8') as f:
+        data = json.load(f)
+    for item in data:
+        dates = {}
+        for field in ('received_date', 'processing_date', 'approval_date',
+                      'revision_date', 'signing_date', 'sent_date',
+                      'archive_date', 'destroyed_date'):
+            if item.get(field):
+                try:
+                    dates[field] = datetime.fromisoformat(item[field])
+                except (ValueError, TypeError):
+                    dates[field] = None
+            else:
+                dates[field] = None
+        contract = Contract(
+            number=item.get('number'),
+            name=item.get('name'),
+            counterparty=item.get('counterparty'),
+            subject=item.get('subject'),
+            amount=item.get('amount'),
+            status=item.get('status', 'received'),
+            responsible=item.get('responsible'),
+            notes=item.get('notes'),
+            received_date=dates['received_date'],
+            processing_date=dates['processing_date'],
+            approval_date=dates['approval_date'],
+            revision_date=dates['revision_date'],
+            signing_date=dates['signing_date'],
+            sent_date=dates['sent_date'],
+            archive_date=dates['archive_date'],
+            destroyed_date=dates['destroyed_date'],
+        )
+        db.session.add(contract)
+    db.session.commit()
 
 
 def parse_date(val):
@@ -129,36 +250,22 @@ def import_excel(filepath):
     return imported
 
 
-@app.route('/')
-def index():
-    contracts = Contract.query.order_by(Contract.created_at.desc()).all()
-    board = {key: [] for key in STATUSES}
-    for c in contracts:
-        board[c.status].append(c.to_dict())
-    return render_template('index.html', board=board, statuses=STATUSES,
-                           status_colors=STATUS_COLORS)
-
-
-@app.route('/database')
-def database():
-    contracts = Contract.query.order_by(Contract.created_at.desc()).all()
-    return render_template('database.html', contracts=[c.to_dict() for c in contracts],
-                           statuses=STATUSES)
-
-
-@app.route('/api/contracts')
-def api_contracts():
-    status = request.args.get('status')
-    search = request.args.get('search', '').strip()
-    date_from = request.args.get('date_from')
-    date_to = request.args.get('date_to')
-    amount_min = request.args.get('amount_min')
-    amount_max = request.args.get('amount_max')
-
-    query = Contract.query
+def apply_filters(query, filters):
+    status = filters.get('status')
+    status_neg = filters.get('status_neg')
+    search = filters.get('search', '').strip()
+    date_from = filters.get('date_from')
+    date_to = filters.get('date_to')
+    amount_min = filters.get('amount_min')
+    amount_max = filters.get('amount_max')
+    period = filters.get('period')
 
     if status and status in STATUSES:
         query = query.filter(Contract.status == status)
+
+    if status_neg:
+        for s in status_neg:
+            query = query.filter(Contract.status != s)
 
     if search:
         like = f'%{search}%'
@@ -186,6 +293,11 @@ def api_contracts():
         except ValueError:
             pass
 
+    if period == 'month':
+        from datetime import timedelta
+        dt = datetime.utcnow() - timedelta(days=30)
+        query = query.filter(Contract.received_date >= dt)
+
     if amount_min:
         try:
             query = query.filter(Contract.amount >= float(amount_min))
@@ -198,6 +310,110 @@ def api_contracts():
         except ValueError:
             pass
 
+    return query
+
+
+@app.route('/')
+def info():
+    total = Contract.query.count()
+    by_status = {}
+    for key in STATUSES:
+        by_status[key] = Contract.query.filter(Contract.status == key).count()
+    active_count = total - by_status.get('archive', 0) - by_status.get('destroyed', 0)
+    total_amount = db.session.query(db.func.sum(Contract.amount)).scalar() or 0
+    signing_count = by_status.get('signing', 0) + by_status.get('sent', 0)
+
+    news_items = [
+        {
+            "date": "10.06.2026",
+            "title": "Введена новая форма доверенности руководителя",
+            "body": "С 1 июля 2026 года вводится обновлённая форма доверенности "
+                    "на подписание договоров. Старые бланки действительны до 01.08.2026.",
+            "tag": "Важно",
+            "tag_color": "#dc3545"
+        },
+        {
+            "date": "08.06.2026",
+            "title": "Новая редакция типового договора поставки",
+            "body": "Утверждена редакция №5 типового договора поставки. "
+                    "Изменены пункты об ответственности сторон и форс-мажоре.",
+            "tag": "Обновление",
+            "tag_color": "#0d6efd"
+        },
+        {
+            "date": "05.06.2026",
+            "title": "День архива — сшей архивный документ!",
+            "body": "Сегодня день архивного работника. Проверьте, все ли "
+                    "исполненные договоры сданы в архив. Срок хранения — 5 лет.",
+            "tag": "Событие",
+            "tag_color": "#198754"
+        },
+        {
+            "date": "01.06.2026",
+            "title": "Мотивация дня: порядок в договорах — порядок в делах",
+            "body": "Каждый оформленный договор приближает нас к порядку "
+                    "в документообороте. Спасибо за вашу работу!",
+            "tag": "Мотивация",
+            "tag_color": "#6f42c1"
+        },
+        {
+            "date": "28.05.2026",
+            "title": "Изменение реквизитов организации",
+            "body": "Обратите внимание: с 01.06.2026 изменились банковские "
+                    "реквизиты организации. Новые данные внесены в шаблоны договоров.",
+            "tag": "Важно",
+            "tag_color": "#dc3545"
+        },
+        {
+            "date": "25.05.2026",
+            "title": "Скоро: семинар по договорной работе",
+            "body": "20 июня состоится семинар «Актуальные вопросы договорной "
+                    "работы». Приглашаются все сотрудники бюро.",
+            "tag": "Анонс",
+            "tag_color": "#F4A261"
+        },
+    ]
+
+    return render_template(
+        'info.html',
+        total=total,
+        active_count=active_count,
+        total_amount=total_amount,
+        signing_count=signing_count,
+        by_status=by_status,
+        news_items=news_items,
+        statuses=STATUSES,
+        status_colors=STATUS_COLORS,
+    )
+
+
+@app.route('/board')
+def board():
+    contracts = Contract.query.order_by(Contract.created_at.desc()).all()
+    board_data = {key: [] for key in STATUSES}
+    for c in contracts:
+        board_data[c.status].append(c.to_dict())
+    return render_template('index.html', board=board_data, statuses=STATUSES,
+                           status_colors=STATUS_COLORS)
+
+
+@app.route('/database')
+def database():
+    contracts = Contract.query.order_by(Contract.created_at.desc()).all()
+    return render_template('database.html', contracts=[c.to_dict() for c in contracts],
+                           statuses=STATUSES)
+
+
+@app.route('/reports')
+def reports():
+    saved = load_saved_reports()
+    return render_template('reports.html', statuses=STATUSES, saved_reports=saved)
+
+
+@app.route('/api/contracts')
+def api_contracts():
+    query = Contract.query
+    query = apply_filters(query, request.args)
     contracts = query.order_by(Contract.created_at.desc()).all()
     return jsonify([c.to_dict() for c in contracts])
 
@@ -308,8 +524,48 @@ def api_clear():
     return jsonify({'message': 'Все договоры удалены'})
 
 
+@app.route('/api/reports', methods=['GET'])
+def api_get_reports():
+    return jsonify(load_saved_reports())
+
+
+@app.route('/api/reports', methods=['POST'])
+def api_save_report():
+    data = request.get_json()
+    reports = load_saved_reports()
+    new_report = {
+        "id": f"report_{len(reports) + 1}",
+        "title": data.get('title', 'Новый отчёт'),
+        "description": data.get('description', ''),
+        "icon": "bi-funnel",
+        "color": "#6C63FF",
+        "filters": data.get('filters', {}),
+    }
+    reports.append(new_report)
+    save_saved_reports(reports)
+    return jsonify(new_report)
+
+
+@app.route('/api/reports/<report_id>', methods=['DELETE'])
+def api_delete_report(report_id):
+    reports = load_saved_reports()
+    reports = [r for r in reports if r['id'] != report_id]
+    save_saved_reports(reports)
+    return jsonify({'message': 'Отчёт удалён'})
+
+
+@app.route('/api/shutdown', methods=['POST'])
+def api_shutdown():
+    func = request.environ.get('werkzeug.server.shutdown')
+    if func:
+        func()
+        return jsonify({'message': 'Сервер остановлен'})
+    return jsonify({'error': 'Не удалось остановить сервер'}), 500
+
+
 with app.app_context():
     db.create_all()
+    load_sample_data()
 
 if __name__ == '__main__':
     app.run(debug=True, host='0.0.0.0', port=5000)

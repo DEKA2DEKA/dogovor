@@ -1,0 +1,156 @@
+{% extends 'base.html' %}
+{% block title %}Главная{% endblock %}
+
+{% block content %}
+<div class="info-hero">
+    <div class="info-logo">
+        <i class="bi bi-file-earmark-text"></i>
+    </div>
+    <h1 class="info-title">Бюро по работе с договорами</h1>
+    <p class="info-subtitle">Мониторинг и управление договорной деятельностью организации</p>
+</div>
+
+<div class="row g-3 mb-4">
+    <div class="col-md-3">
+        <div class="stat-card">
+            <div class="stat-icon bg-primary">
+                <i class="bi bi-file-text"></i>
+            </div>
+            <div class="stat-body">
+                <div class="stat-number">{{ total }}</div>
+                <div class="stat-label">Всего договоров</div>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-3">
+        <div class="stat-card">
+            <div class="stat-icon bg-success">
+                <i class="bi bi-activity"></i>
+            </div>
+            <div class="stat-body">
+                <div class="stat-number">{{ active_count }}</div>
+                <div class="stat-label">В работе</div>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-3">
+        <div class="stat-card">
+            <div class="stat-icon bg-warning">
+                <i class="bi bi-pen"></i>
+            </div>
+            <div class="stat-body">
+                <div class="stat-number">{{ signing_count }}</div>
+                <div class="stat-label">На подписании / отправке</div>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-3">
+        <div class="stat-card">
+            <div class="stat-icon bg-info">
+                <i class="bi bi-cash-stack"></i>
+            </div>
+            <div class="stat-body">
+                <div class="stat-number">{{ "%.0f"|format(total_amount // 1000) }} тыс.</div>
+                <div class="stat-label">Общая сумма договоров</div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="row g-3 mb-4">
+    <div class="col-md-4">
+        <div class="card h-100">
+            <div class="card-header d-flex justify-content-between align-items-center">
+                <span><i class="bi bi-pie-chart"></i> Распределение по статусам</span>
+            </div>
+            <div class="card-body">
+                {% for key, label in statuses.items() %}
+                <div class="d-flex justify-content-between align-items-center mb-2">
+                    <span class="d-flex align-items-center">
+                        <span class="status-dot" style="background:{{ status_colors.get(key, '#6c757d') }}"></span>
+                        <small>{{ label }}</small>
+                    </span>
+                    <span class="badge" style="background:{{ status_colors.get(key, '#6c757d') }}">
+                        {{ by_status.get(key, 0) }}
+                    </span>
+                </div>
+                {% endfor %}
+            </div>
+        </div>
+    </div>
+    <div class="col-md-8">
+        <div class="card h-100">
+            <div class="card-header d-flex justify-content-between align-items-center">
+                <span><i class="bi bi-megaphone"></i> Новости и события</span>
+                <small class="text-muted">Актуально на {{ "now"|format_date }}</small>
+            </div>
+            <div class="card-body news-feed">
+                {% for item in news_items %}
+                <div class="news-card">
+                    <div class="d-flex justify-content-between align-items-start mb-1">
+                        <span class="news-tag" style="background:{{ item.tag_color }}">{{ item.tag }}</span>
+                        <small class="text-muted">{{ item.date }}</small>
+                    </div>
+                    <h6 class="mb-1">{{ item.title }}</h6>
+                    <p class="mb-0 text-muted small">{{ item.body }}</p>
+                </div>
+                {% endfor %}
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="card">
+    <div class="card-header">
+        <i class="bi bi-journal-text"></i> Регламент и документация
+    </div>
+    <div class="card-body">
+        <div class="row g-3">
+            <div class="col-md-4">
+                <a href="#" class="doc-link" onclick="alert('Регламент договорной работы (PDF) — скачивание...'); return false;">
+                    <i class="bi bi-file-pdf text-danger fs-4"></i>
+                    <div>
+                        <strong>Регламент договорной работы</strong>
+                        <small class="text-muted d-block">Версия 4.2 от 15.01.2026</small>
+                    </div>
+                </a>
+            </div>
+            <div class="col-md-4">
+                <a href="#" class="doc-link" onclick="alert('Инструкция по делопроизводству (PDF) — скачивание...'); return false;">
+                    <i class="bi bi-file-pdf text-danger fs-4"></i>
+                    <div>
+                        <strong>Инструкция по делопроизводству</strong>
+                        <small class="text-muted d-block">Утверждена приказом №45 от 20.12.2025</small>
+                    </div>
+                </a>
+            </div>
+            <div class="col-md-4">
+                <a href="#" class="doc-link" onclick="alert('Типовые формы договоров — открытие...'); return false;">
+                    <i class="bi bi-files text-primary fs-4"></i>
+                    <div>
+                        <strong>Типовые формы договоров</strong>
+                        <small class="text-muted d-block">Шаблоны для скачивания</small>
+                    </div>
+                </a>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+document.querySelectorAll('.stat-number').forEach(el => {
+    const target = parseInt(el.textContent.replace(/\s/g, '').replace(/[^0-9]/g, ''));
+    if (target > 0 && target < 10000) {
+        let current = 0;
+        const step = Math.max(1, Math.floor(target / 30));
+        const timer = setInterval(() => {
+            current = Math.min(current + step, target);
+            el.textContent = current.toLocaleString('ru-RU');
+            if (current >= target) clearInterval(timer);
+        }, 30);
+    }
+});
+</script>
+{% endblock %}

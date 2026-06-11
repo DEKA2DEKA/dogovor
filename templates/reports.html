@@ -1,0 +1,217 @@
+{% extends 'base.html' %}
+{% block title %}Отчёты{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-3">
+    <h4 class="mb-0"><i class="bi bi-bar-chart"></i> Отчёты по договорам</h4>
+    <button class="btn btn-outline-primary btn-sm" onclick="showSaveReportModal()">
+        <i class="bi bi-save"></i> Сохранить текущий фильтр
+    </button>
+</div>
+
+<div class="row g-2 mb-4" id="savedReports">
+    {% for report in saved_reports %}
+    <div class="col-md-4 col-lg-2">
+        <div class="report-preset" style="border-color: {{ report.color }}" onclick="applyReport('{{ report.id }}')">
+            <div class="report-preset-icon" style="color: {{ report.color }}">
+                <i class="bi {{ report.icon }}"></i>
+            </div>
+            <div class="report-preset-title">{{ report.title }}</div>
+            <div class="report-preset-desc">{{ report.description }}</div>
+        </div>
+    </div>
+    {% endfor %}
+</div>
+
+<div class="card mb-3">
+    <div class="card-body">
+        <div class="row g-2 align-items-end">
+            <div class="col-md-3">
+                <label class="form-label small">Поиск</label>
+                <input type="text" class="form-control form-control-sm" id="reportSearch" placeholder="Номер, контрагент...">
+            </div>
+            <div class="col-md-2">
+                <label class="form-label small">Статус</label>
+                <select class="form-select form-select-sm" id="reportStatus">
+                    <option value="">Все</option>
+                    {% for key, label in statuses.items() %}
+                    <option value="{{ key }}">{{ label }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div class="col-md-2">
+                <label class="form-label small">Сумма от</label>
+                <input type="number" class="form-control form-control-sm" id="reportAmountMin" placeholder="0">
+            </div>
+            <div class="col-md-2">
+                <label class="form-label small">Сумма до</label>
+                <input type="number" class="form-control form-control-sm" id="reportAmountMax" placeholder="∞">
+            </div>
+            <div class="col-md-2">
+                <label class="form-label small">Дата получения с</label>
+                <input type="date" class="form-control form-control-sm" id="reportDateFrom">
+            </div>
+            <div class="col-md-1">
+                <label class="form-label small">&nbsp;</label>
+                <button class="btn btn-sm btn-outline-secondary w-100" onclick="resetReportFilters()">Сброс</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="d-flex justify-content-between align-items-center mb-2">
+    <span class="text-muted small" id="reportCount">Загрузка...</span>
+    <div>
+        <button class="btn btn-sm btn-outline-success" onclick="exportReportCSV()">
+            <i class="bi bi-download"></i> CSV
+        </button>
+    </div>
+</div>
+
+<div class="table-responsive">
+    <table class="table table-hover table-sm align-middle" id="reportTable">
+        <thead class="table-dark">
+            <tr>
+                <th>№</th>
+                <th>Номер договора</th>
+                <th>Контрагент</th>
+                <th>Предмет</th>
+                <th>Сумма</th>
+                <th>Статус</th>
+                <th>Ответственный</th>
+                <th>Дата получения</th>
+                <th></th>
+            </tr>
+        </thead>
+        <tbody>
+            <tr><td colspan="9" class="text-center text-muted py-4">Примените фильтры для загрузки данных</td></tr>
+        </tbody>
+    </table>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+let reportContracts = [];
+
+document.addEventListener('DOMContentLoaded', function () {
+    document.querySelectorAll('#reportSearch, #reportStatus, #reportAmountMin, #reportAmountMax, #reportDateFrom, #reportDateTo').forEach(el => {
+        if (el) {
+            el.addEventListener('input', loadReportData);
+            if (el.tagName === 'SELECT') el.addEventListener('change', loadReportData);
+        }
+    });
+    loadReportData();
+});
+
+function loadReportData() {
+    const params = new URLSearchParams();
+    const search = document.getElementById('reportSearch');
+    const status = document.getElementById('reportStatus');
+    const amountMin = document.getElementById('reportAmountMin');
+    const amountMax = document.getElementById('reportAmountMax');
+    const dateFrom = document.getElementById('reportDateFrom');
+
+    if (search.value) params.set('search', search.value);
+    if (status.value) params.set('status', status.value);
+    if (amountMin.value) params.set('amount_min', amountMin.value);
+    if (amountMax.value) params.set('amount_max', amountMax.value);
+    if (dateFrom.value) params.set('date_from', dateFrom.value);
+
+    const countEl = document.getElementById('reportCount');
+
+    fetch(`/api/contracts?${params.toString()}`)
+        .then(r => r.json())
+        .then(data => {
+            reportContracts = data;
+            countEl.textContent = `Найдено: ${data.length} договоров`;
+            const tbody = document.querySelector('#reportTable tbody');
+            if (data.length === 0) {
+                tbody.innerHTML = '<tr><td colspan="9" class="text-center text-muted py-4">Договоры не найдены</td></tr>';
+                return;
+            }
+            tbody.innerHTML = data.map((c, i) => `
+                <tr>
+                    <td>${i + 1}</td>
+                    <td><a href="#" onclick="showContractDetail(${c.id}); return false">${c.number || 'б/н'}</a></td>
+                    <td>${c.counterparty}</td>
+                    <td class="text-truncate" style="max-width:200px">${c.subject}</td>
+                    <td>${c.amount.toFixed(2)} ₽</td>
+                    <td><span class="badge status-badge">${c.status_display}</span></td>
+                    <td>${c.responsible}</td>
+                    <td>${c.received_date ? c.received_date.slice(0, 10) : ''}</td>
+                    <td><button class="btn btn-sm btn-outline-primary" onclick="showContractDetail(${c.id})"><i class="bi bi-eye"></i></button></td>
+                </tr>
+            `).join('');
+        });
+}
+
+function applyReport(reportId) {
+    fetch('/api/reports')
+        .then(r => r.json())
+        .then(reports => {
+            const report = reports.find(r => r.id === reportId);
+            if (!report || !report.filters) return;
+            const f = report.filters;
+            if (f.status) document.getElementById('reportStatus').value = f.status;
+            if (f.amount_min) document.getElementById('reportAmountMin').value = f.amount_min;
+            if (f.amount_max) document.getElementById('reportAmountMax').value = f.amount_max;
+            if (f.search) document.getElementById('reportSearch').value = f.search;
+            loadReportData();
+        });
+}
+
+function resetReportFilters() {
+    document.getElementById('reportSearch').value = '';
+    document.getElementById('reportStatus').value = '';
+    document.getElementById('reportAmountMin').value = '';
+    document.getElementById('reportAmountMax').value = '';
+    document.getElementById('reportDateFrom').value = '';
+    loadReportData();
+}
+
+function showSaveReportModal() {
+    const search = document.getElementById('reportSearch').value;
+    const status = document.getElementById('reportStatus').value;
+    const amountMin = document.getElementById('reportAmountMin').value;
+    const amountMax = document.getElementById('reportAmountMax').value;
+    const dateFrom = document.getElementById('reportDateFrom').value;
+
+    const filters = {};
+    if (status) filters.status = status;
+    if (amountMin) filters.amount_min = amountMin;
+    if (amountMax) filters.amount_max = amountMax;
+    if (search) filters.search = search;
+
+    const name = prompt('Введите название отчёта:', 'Мой отчёт');
+    if (!name) return;
+
+    fetch('/api/reports', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({title: name, description: 'Пользовательский отчёт', filters: filters})
+    })
+    .then(r => r.json())
+    .then(() => location.reload());
+}
+
+function exportReportCSV() {
+    if (reportContracts.length === 0) {
+        alert('Нет данных для экспорта');
+        return;
+    }
+    const headers = ['Номер', 'Наименование', 'Контрагент', 'Предмет', 'Сумма', 'Статус', 'Ответственный', 'Дата получения'];
+    const rows = reportContracts.map(c => [
+        c.number, c.name, c.counterparty, c.subject, c.amount, c.status_display, c.responsible,
+        c.received_date ? c.received_date.slice(0, 10) : ''
+    ]);
+    const bom = '\uFEFF';
+    const csv = bom + headers.join(';') + '\n' + rows.map(r => r.map(v => `"${v}"`).join(';')).join('\n');
+    const blob = new Blob([csv], {type: 'text/csv;charset=utf-8;'});
+    const link = document.createElement('a');
+    link.href = URL.createObjectURL(blob);
+    link.download = 'report.csv';
+    link.click();
+}
+</script>
+{% endblock %}
