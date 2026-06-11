@@ -31,11 +31,11 @@
                 <input type="text" class="form-control form-control-sm" id="reportSearch" placeholder="Номер, контрагент...">
             </div>
             <div class="col-md-2">
-                <label class="form-label small">Статус</label>
-                <select class="form-select form-select-sm" id="reportStatus">
+                <label class="form-label small">Раздел</label>
+                <select class="form-select form-select-sm" id="reportSection">
                     <option value="">Все</option>
-                    {% for key, label in statuses.items() %}
-                    <option value="{{ key }}">{{ label }}</option>
+                    {% for key in sections_order %}
+                    <option value="{{ key }}">{{ sections[key].label }}</option>
                     {% endfor %}
                 </select>
             </div>
@@ -95,7 +95,7 @@
 let reportContracts = [];
 
 document.addEventListener('DOMContentLoaded', function () {
-    document.querySelectorAll('#reportSearch, #reportStatus, #reportAmountMin, #reportAmountMax, #reportDateFrom, #reportDateTo').forEach(el => {
+    document.querySelectorAll('#reportSearch, #reportSection, #reportAmountMin, #reportAmountMax, #reportDateFrom, #reportDateTo').forEach(el => {
         if (el) {
             el.addEventListener('input', loadReportData);
             if (el.tagName === 'SELECT') el.addEventListener('change', loadReportData);
@@ -107,13 +107,13 @@ document.addEventListener('DOMContentLoaded', function () {
 function loadReportData() {
     const params = new URLSearchParams();
     const search = document.getElementById('reportSearch');
-    const status = document.getElementById('reportStatus');
+    const section = document.getElementById('reportSection');
     const amountMin = document.getElementById('reportAmountMin');
     const amountMax = document.getElementById('reportAmountMax');
     const dateFrom = document.getElementById('reportDateFrom');
 
     if (search.value) params.set('search', search.value);
-    if (status.value) params.set('status', status.value);
+    if (section.value) params.set('sections', section.value);
     if (amountMin.value) params.set('amount_min', amountMin.value);
     if (amountMax.value) params.set('amount_max', amountMax.value);
     if (dateFrom.value) params.set('date_from', dateFrom.value);
@@ -137,7 +137,7 @@ function loadReportData() {
                     <td>${c.counterparty}</td>
                     <td class="text-truncate" style="max-width:200px">${c.subject}</td>
                     <td>${c.amount.toFixed(2)} ₽</td>
-                    <td><span class="badge status-badge">${c.status_display}</span></td>
+                    <td><span class="badge" style="background:#6c757d">${c.status_display}</span></td>
                     <td>${c.responsible}</td>
                     <td>${c.received_date ? c.received_date.slice(0, 10) : ''}</td>
                     <td><button class="btn btn-sm btn-outline-primary" onclick="showContractDetail(${c.id})"><i class="bi bi-eye"></i></button></td>
@@ -153,7 +153,11 @@ function applyReport(reportId) {
             const report = reports.find(r => r.id === reportId);
             if (!report || !report.filters) return;
             const f = report.filters;
-            if (f.status) document.getElementById('reportStatus').value = f.status;
+            if (f.sections) {
+                const secList = Array.isArray(f.sections) ? f.sections : [f.sections];
+                const el = document.getElementById('reportSection');
+                if (secList.length === 1) el.value = secList[0];
+            }
             if (f.amount_min) document.getElementById('reportAmountMin').value = f.amount_min;
             if (f.amount_max) document.getElementById('reportAmountMax').value = f.amount_max;
             if (f.search) document.getElementById('reportSearch').value = f.search;
@@ -163,7 +167,7 @@ function applyReport(reportId) {
 
 function resetReportFilters() {
     document.getElementById('reportSearch').value = '';
-    document.getElementById('reportStatus').value = '';
+    document.getElementById('reportSection').value = '';
     document.getElementById('reportAmountMin').value = '';
     document.getElementById('reportAmountMax').value = '';
     document.getElementById('reportDateFrom').value = '';
@@ -172,13 +176,13 @@ function resetReportFilters() {
 
 function showSaveReportModal() {
     const search = document.getElementById('reportSearch').value;
-    const status = document.getElementById('reportStatus').value;
+    const section = document.getElementById('reportSection').value;
     const amountMin = document.getElementById('reportAmountMin').value;
     const amountMax = document.getElementById('reportAmountMax').value;
     const dateFrom = document.getElementById('reportDateFrom').value;
 
     const filters = {};
-    if (status) filters.status = status;
+    if (section) filters.sections = section;
     if (amountMin) filters.amount_min = amountMin;
     if (amountMax) filters.amount_max = amountMax;
     if (search) filters.search = search;
@@ -200,9 +204,9 @@ function exportReportCSV() {
         alert('Нет данных для экспорта');
         return;
     }
-    const headers = ['Номер', 'Наименование', 'Контрагент', 'Предмет', 'Сумма', 'Статус', 'Ответственный', 'Дата получения'];
+    const headers = ['Номер', 'Наименование', 'Контрагент', 'Предмет', 'Сумма', 'Раздел', 'Ответственный', 'Дата получения'];
     const rows = reportContracts.map(c => [
-        c.number, c.name, c.counterparty, c.subject, c.amount, c.status_display, c.responsible,
+        c.number, c.name, c.counterparty, c.subject, c.amount, c.sections.join(', '), c.responsible,
         c.received_date ? c.received_date.slice(0, 10) : ''
     ]);
     const bom = '\uFEFF';

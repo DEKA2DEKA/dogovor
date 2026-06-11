@@ -1,0 +1,66 @@
+{% extends 'base.html' %}
+{% block title %}Доска разделов{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-3">
+    <h4 class="mb-0"><i class="bi bi-kanban"></i> Доска разделов</h4>
+    <div>
+        <button class="btn btn-outline-primary btn-sm" onclick="document.getElementById('fileInput').click()">
+            <i class="bi bi-upload"></i> Загрузить Excel
+        </button>
+    </div>
+</div>
+
+<div id="dropZone" class="drop-zone">
+    <div class="drop-zone-text">
+        <i class="bi bi-cloud-upload fs-1"></i>
+        <p class="mb-0">Перетащите файл Excel сюда или нажмите кнопку «Загрузить Excel»</p>
+    </div>
+    <div class="drop-zone-progress d-none">
+        <div class="spinner-border text-primary" role="status"></div>
+        <p class="mb-0 mt-2">Импорт данных...</p>
+    </div>
+</div>
+<input type="file" id="fileInput" accept=".xlsx,.xls" style="display:none">
+
+<div class="row g-4">
+    {% for key in sections_order %}
+    {% set sec = sections[key] %}
+    <div class="col-md-{% if key in ('conclusion', 'execution', 'modification') %}4{% else %}6{% endif %}">
+        <a href="{{ url_for('section_detail', section_key=key) }}" class="section-card-link">
+            <div class="section-card" style="border-top: 4px solid {{ sec.step_colors[sec.steps[0]] }}">
+                <div class="d-flex justify-content-between align-items-start">
+                    <div>
+                        <h5 class="section-card-title">{{ sec.label }}</h5>
+                        <div class="section-card-count">{{ stats.get(key, 0) }}</div>
+                        <small class="text-muted">договоров</small>
+                    </div>
+                    <div class="section-card-icon" style="color: {{ sec.step_colors[sec.steps[0]] }}">
+                        {% if key == 'conclusion' %}
+                        <i class="bi bi-file-earmark-text"></i>
+                        {% elif key == 'execution' %}
+                        <i class="bi bi-gear"></i>
+                        {% elif key == 'modification' %}
+                        <i class="bi bi-pencil-square"></i>
+                        {% elif key == 'storage' %}
+                        <i class="bi bi-archive"></i>
+                        {% elif key == 'archive' %}
+                        <i class="bi bi-trash"></i>
+                        {% endif %}
+                    </div>
+                </div>
+                <div class="mt-2 d-flex flex-wrap gap-1">
+                    {% for step in sec.steps %}
+                    <span class="step-mini" style="background: {{ sec.step_colors[step] }}">
+                        {{ sec.step_labels[step][:12] }}{% if sec.step_labels[step]|length > 12 %}…{% endif %}
+                    </span>
+                    {% endfor %}
+                </div>
+            </div>
+        </a>
+    </div>
+    {% endfor %}
+</div>
+
+{% include 'modals.html' %}
+{% endblock %}

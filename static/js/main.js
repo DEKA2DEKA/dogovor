@@ -1,5 +1,13 @@
 let currentContractId = null;
 
+const SECTIONS = {
+    conclusion: { label: 'Заключение', steps: ['received', 'processing', 'approval', 'revision', 'signing', 'sent'], step_labels: { received: 'Получен', processing: 'Оформление', approval: 'Согласование', revision: 'Корректировка', signing: 'Подписание руководителем', sent: 'Направление контрагенту' }, step_colors: { received: '#4A90D9', processing: '#00B4D8', approval: '#F4A261', revision: '#E76F51', signing: '#9B5DE5', sent: '#6C63FF' } },
+    execution: { label: 'Исполнение', steps: ['contract_letter', 'in_progress', 'completed'], step_labels: { contract_letter: 'Договорное письмо', in_progress: 'В процессе исполнения', completed: 'Исполнение завершено' }, step_colors: { contract_letter: '#20B2AA', in_progress: '#3CB371', completed: '#2E8B57' } },
+    modification: { label: 'Изменение', steps: ['received', 'processing', 'approval', 'revision', 'signing', 'sent'], step_labels: { received: 'ДС/письмо получено', processing: 'Оформление ДС', approval: 'Согласование', revision: 'Корректировка', signing: 'Подписание руководителем', sent: 'Направление контрагенту' }, step_colors: { received: '#E67E22', processing: '#D35400', approval: '#E74C3C', revision: '#C0392B', signing: '#8E44AD', sent: '#6C63FF' } },
+    storage: { label: 'Хранение', steps: ['pending', 'stored'], step_labels: { pending: 'Ожидает сдачи', stored: 'На хранении' }, step_colors: { pending: '#95A5A6', stored: '#7F8C8D' } },
+    archive: { label: 'Архив', steps: ['pending_destruction', 'destroyed'], step_labels: { pending_destruction: 'К уничтожению', destroyed: 'Уничтожен' }, step_colors: { pending_destruction: '#34495E', destroyed: '#2C3B40' } },
+};
+
 document.addEventListener('DOMContentLoaded', function () {
     initDragDrop();
     initFileInput();
@@ -8,33 +16,20 @@ document.addEventListener('DOMContentLoaded', function () {
 function initDragDrop() {
     const dropZone = document.getElementById('dropZone');
     if (!dropZone) return;
-
     dropZone.classList.add('active');
 
     ['dragenter', 'dragover', 'dragleave', 'drop'].forEach(event => {
-        document.body.addEventListener(event, e => {
-            e.preventDefault();
-            e.stopPropagation();
-        });
+        document.body.addEventListener(event, e => { e.preventDefault(); e.stopPropagation(); });
     });
-
     ['dragenter', 'dragover'].forEach(event => {
-        document.body.addEventListener(event, () => {
-            dropZone.classList.add('dragover');
-        });
+        document.body.addEventListener(event, () => { dropZone.classList.add('dragover'); });
     });
-
     ['dragleave', 'drop'].forEach(event => {
-        document.body.addEventListener(event, e => {
-            dropZone.classList.remove('dragover');
-        });
+        document.body.addEventListener(event, () => { dropZone.classList.remove('dragover'); });
     });
-
     document.body.addEventListener('drop', e => {
         const files = e.dataTransfer.files;
-        if (files.length > 0) {
-            handleFile(files[0]);
-        }
+        if (files.length > 0) handleFile(files[0]);
     });
 }
 
@@ -42,9 +37,7 @@ function initFileInput() {
     const input = document.getElementById('fileInput');
     if (!input) return;
     input.addEventListener('change', e => {
-        if (e.target.files.length > 0) {
-            handleFile(e.target.files[0]);
-        }
+        if (e.target.files.length > 0) handleFile(e.target.files[0]);
     });
 }
 
@@ -54,29 +47,22 @@ function handleFile(file) {
         showImportResult('error', 'Поддерживаются только файлы Excel (.xlsx, .xls)');
         return;
     }
-
     const dropZone = document.getElementById('dropZone');
+    if (!dropZone) return;
     const progressEl = dropZone.querySelector('.drop-zone-progress');
     const textEl = dropZone.querySelector('.drop-zone-text');
-
     textEl.classList.add('d-none');
     progressEl.classList.remove('d-none');
-
     const formData = new FormData();
     formData.append('file', file);
-
     fetch('/api/import', { method: 'POST', body: formData })
         .then(r => r.json())
         .then(data => {
             progressEl.classList.add('d-none');
             textEl.classList.remove('d-none');
-            if (data.error) {
-                showImportResult('error', data.error);
-            } else {
-                showImportResult('success', data.message);
-            }
+            showImportResult(data.error ? 'error' : 'success', data.error || data.message);
         })
-        .catch(err => {
+        .catch(() => {
             progressEl.classList.add('d-none');
             textEl.classList.remove('d-none');
             showImportResult('error', 'Ошибка при загрузке файла');
@@ -85,94 +71,90 @@ function handleFile(file) {
 
 function showImportResult(type, message) {
     const modal = new bootstrap.Modal(document.getElementById('importModal'));
-    const result = document.getElementById('importResult');
-    result.innerHTML = `<div class="alert alert-${type === 'success' ? 'success' : 'danger'} mb-0">${message}</div>`;
+    document.getElementById('importResult').innerHTML =
+        `<div class="alert alert-${type === 'success' ? 'success' : 'danger'} mb-0">${message}</div>`;
     modal.show();
 }
 
 function showContractDetail(id) {
     currentContractId = id;
     const modal = new bootstrap.Modal(document.getElementById('contractModal'));
-    const title = document.getElementById('modalTitle');
-    const body = document.getElementById('modalBody');
-
-    title.textContent = 'Загрузка...';
-    body.innerHTML = '<div class="text-center py-4"><div class="spinner-border text-primary" role="status"></div></div>';
+    document.getElementById('modalTitle').textContent = 'Загрузка...';
+    document.getElementById('modalBody').innerHTML =
+        '<div class="text-center py-4"><div class="spinner-border text-primary" role="status"></div></div>';
     modal.show();
 
-    fetch(`/api/contracts`)
+    fetch('/api/contracts')
         .then(r => r.json())
-        .then(allContracts => {
-            const contract = allContracts.find(c => c.id === id);
-            if (!contract) {
-                body.innerHTML = '<div class="alert alert-danger">Договор не найден</div>';
-                return;
-            }
-            renderContractDetail(contract);
+        .then(all => {
+            const c = all.find(x => x.id === id);
+            if (c) renderContractDetail(c);
+            else document.getElementById('modalBody').innerHTML = '<div class="alert alert-danger">Договор не найден</div>';
         })
         .catch(() => {
-            body.innerHTML = '<div class="alert alert-danger">Ошибка загрузки данных</div>';
+            document.getElementById('modalBody').innerHTML = '<div class="alert alert-danger">Ошибка загрузки</div>';
         });
 }
 
 function renderContractDetail(c) {
-    const title = document.getElementById('modalTitle');
-    const body = document.getElementById('modalBody');
+    document.getElementById('modalTitle').textContent = `Договор ${c.number || 'б/н'}`;
 
-    const statusList = [
-        { key: 'received', label: 'Получен', date: c.received_date },
-        { key: 'processing', label: 'Оформление', date: c.processing_date },
-        { key: 'approval', label: 'Согласование', date: c.approval_date },
-        { key: 'revision', label: 'Корректировка', date: c.revision_date },
-        { key: 'signing', label: 'Подписание руководителем', date: c.signing_date },
-        { key: 'sent', label: 'Направление контрагенту', date: c.sent_date },
-        { key: 'archive', label: 'Архив', date: c.archive_date },
-        { key: 'destroyed', label: 'Уничтожен', date: c.destroyed_date },
-    ];
+    const sectionsHtml = c.sections.map(sk => {
+        const sec = SECTIONS[sk];
+        if (!sec) return '';
+        const steps = c.section_steps || {};
+        const curStep = steps[sk] || sec.steps[0];
+        const curIdx = sec.steps.indexOf(curStep);
 
-    const statusOrder = ['received', 'processing', 'approval', 'revision', 'signing', 'sent', 'archive', 'destroyed'];
-    const currentIdx = statusOrder.indexOf(c.status);
-    let foundActive = false;
+        const timelineHtml = sec.steps.map((s, i) => {
+            let cls = '';
+            if (i < curIdx) cls = 'completed';
+            else if (i === curIdx) cls = 'active';
+            return `<div class="timeline-item ${cls}">
+                <strong>${sec.step_labels[s] || s}</strong>
+            </div>`;
+        }).join('');
 
-    const timelineHtml = statusList.map((s, i) => {
-        let cls = '';
-        if (i < currentIdx) cls = 'completed';
-        else if (i === currentIdx) { cls = 'active'; foundActive = true; }
-        const dateStr = s.date ? new Date(s.date).toLocaleDateString('ru-RU') : '—';
-        return `
-            <div class="timeline-item ${cls}">
-                <strong>${s.label}</strong>
-                <br><small class="text-muted">${dateStr}</small>
+        return `<div class="card mb-2">
+            <div class="card-body py-2">
+                <div class="d-flex justify-content-between align-items-center mb-2">
+                    <h6 class="mb-0" style="color:${sec.step_colors[curStep] || '#6c757d'}">
+                        <i class="bi bi-circle-fill" style="font-size:0.6rem"></i> ${sec.label}
+                    </h6>
+                    <span class="badge" style="background:${sec.step_colors[curStep] || '#6c757d'}">
+                        ${sec.step_labels[curStep] || curStep}
+                    </span>
+                </div>
+                <div class="timeline" style="padding-left:20px">
+                    ${timelineHtml}
+                </div>
             </div>
-        `;
+        </div>`;
     }).join('');
 
-    const statusColors = {
-        received: '#4A90D9', processing: '#00B4D8', approval: '#F4A261',
-        revision: '#E76F51', signing: '#9B5DE5', sent: '#6C63FF',
-        archive: '#2A9D8F', destroyed: '#6C757D'
-    };
+    const childrenHtml = (c.children || []).map(ch => {
+        return `<div class="d-flex justify-content-between align-items-center py-1 border-bottom">
+            <a href="#" onclick="showContractDetail(${ch.id}); return false">${ch.number || 'б/н'}</a>
+            <small class="text-muted">${ch.name}</small>
+        </div>`;
+    }).join('');
 
-    const statusLabel = {
-        received: 'Получен', processing: 'Оформление', approval: 'Согласование',
-        revision: 'Корректировка', signing: 'Подписание руководителем',
-        sent: 'Направление контрагенту', archive: 'Архив', destroyed: 'Уничтожен'
-    };
+    const parentLink = c.parent_id
+        ? `<div class="mb-2"><small class="text-muted">ДС к договору:</small>
+            <a href="#" onclick="showContractDetail(${c.parent_id}); return false">
+                (открыть основной договор)</a></div>`
+        : '';
 
-    title.textContent = `Договор ${c.number || 'б/н'}`;
-
-    body.innerHTML = `
+    document.getElementById('modalBody').innerHTML = `
         <div class="row">
             <div class="col-md-7">
                 <div class="card mb-3">
                     <div class="card-body">
-                        <div class="d-flex justify-content-between align-items-start mb-3">
-                            <span class="badge fs-6" style="background:${statusColors[c.status] || '#6c757d'}">${statusLabel[c.status] || c.status}</span>
-                            <div>
-                                <button class="btn btn-sm btn-outline-primary" onclick="moveContract(${c.id})">
-                                    <i class="bi bi-arrow-right"></i> На следующий этап
-                                </button>
-                            </div>
+                        ${parentLink}
+                        <div class="d-flex justify-content-between align-items-start mb-2">
+                            <span class="badge ${c.contract_type === 'additional' ? 'bg-warning text-dark' : 'bg-secondary'}">
+                                ${c.contract_type === 'additional' ? 'Дополнительное соглашение' : 'Основной договор'}
+                            </span>
                         </div>
 
                         <div class="modal-detail-label">Номер договора</div>
@@ -200,54 +182,23 @@ function renderContractDetail(c) {
 
                         <div class="modal-detail-label">Примечания</div>
                         <div class="modal-detail-value">${c.notes || '—'}</div>
+
+                        ${childrenHtml ? `<div class="mt-3"><div class="modal-detail-label">Дополнительные соглашения</div>${childrenHtml}</div>` : ''}
                     </div>
                 </div>
             </div>
             <div class="col-md-5">
-                <div class="card">
-                    <div class="card-body">
-                        <h6 class="card-title">Ход выполнения</h6>
-                        <div class="timeline">
-                            ${timelineHtml}
-                        </div>
-                    </div>
-                </div>
+                <h6 class="mb-2">Разделы и шаги</h6>
+                ${sectionsHtml || '<p class="text-muted">Нет данных</p>'}
             </div>
-        </div>
-    `;
-}
-
-function moveContract(id) {
-    fetch(`/api/contracts`)
-        .then(r => r.json())
-        .then(all => {
-            const c = all.find(x => x.id === id);
-            if (!c) return;
-            const order = ['received', 'processing', 'approval', 'revision', 'signing', 'sent', 'archive', 'destroyed'];
-            const idx = order.indexOf(c.status);
-            if (idx < order.length - 1) {
-                const nextStatus = order[idx + 1];
-                fetch(`/api/contract/${id}/move`, {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ status: nextStatus })
-                })
-                .then(r => r.json())
-                .then(() => {
-                    const modal = bootstrap.Modal.getInstance(document.getElementById('contractModal'));
-                    if (modal) modal.hide();
-                    location.reload();
-                });
-            }
-        });
+        </div>`;
 }
 
 function deleteContract(id) {
-    const body = document.getElementById('confirmBody');
-    body.textContent = 'Вы уверены, что хотите удалить этот договор?';
+    document.getElementById('confirmBody').textContent = 'Вы уверены, что хотите удалить этот договор?';
     const modal = new bootstrap.Modal(document.getElementById('confirmModal'));
     const btn = document.getElementById('confirmBtn');
-
+    btn.className = 'btn btn-danger';
     const handler = () => {
         fetch(`/api/contract/${id}`, { method: 'DELETE' })
             .then(r => r.json())
@@ -255,17 +206,15 @@ function deleteContract(id) {
             .catch(() => alert('Ошибка при удалении'));
         btn.removeEventListener('click', handler);
     };
-
     btn.addEventListener('click', handler);
     modal.show();
 }
 
 function clearAll() {
-    const body = document.getElementById('confirmBody');
-    body.textContent = 'Вы уверены, что хотите удалить ВСЕ договоры? Это действие необратимо.';
+    document.getElementById('confirmBody').textContent = 'Удалить ВСЕ договоры? Это необратимо.';
     const modal = new bootstrap.Modal(document.getElementById('confirmModal'));
     const btn = document.getElementById('confirmBtn');
-
+    btn.className = 'btn btn-danger';
     const handler = () => {
         fetch('/api/clear', { method: 'POST' })
             .then(r => r.json())
@@ -273,31 +222,22 @@ function clearAll() {
             .catch(() => alert('Ошибка'));
         btn.removeEventListener('click', handler);
     };
-
     btn.addEventListener('click', handler);
     modal.show();
 }
 
 function stopServer() {
-    const body = document.getElementById('confirmBody');
-    body.textContent = 'Остановить сервер? Все несохранённые данные будут потеряны.';
+    document.getElementById('confirmBody').textContent = 'Остановить сервер? Все данные сохранятся.';
     const modal = new bootstrap.Modal(document.getElementById('confirmModal'));
     const btn = document.getElementById('confirmBtn');
     btn.className = 'btn btn-danger';
-
     const handler = () => {
         fetch('/api/shutdown', { method: 'POST' })
             .then(r => r.json())
-            .then(data => {
-                alert(data.message || 'Сервер остановлен');
-            })
-            .catch(() => {
-                alert('Сервер остановлен. Закройте это окно.');
-            });
+            .then(data => alert(data.message || 'Сервер остановлен'))
+            .catch(() => alert('Сервер остановлен'));
         btn.removeEventListener('click', handler);
-        btn.className = 'btn btn-danger';
     };
-
     btn.addEventListener('click', handler);
     modal.show();
 }

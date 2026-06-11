@@ -29,18 +29,18 @@
             </div>
             <div class="stat-body">
                 <div class="stat-number">{{ active_count }}</div>
-                <div class="stat-label">В работе</div>
+                <div class="stat-label">В работе (заключение/исполнение)</div>
             </div>
         </div>
     </div>
     <div class="col-md-3">
         <div class="stat-card">
             <div class="stat-icon bg-warning">
-                <i class="bi bi-pen"></i>
+                <i class="bi bi-archive"></i>
             </div>
             <div class="stat-body">
-                <div class="stat-number">{{ signing_count }}</div>
-                <div class="stat-label">На подписании / отправке</div>
+                <div class="stat-number">{{ in_storage }}</div>
+                <div class="stat-label">Хранение / Архив</div>
             </div>
         </div>
     </div>
@@ -58,27 +58,28 @@
 </div>
 
 <div class="row g-3 mb-4">
-    <div class="col-md-4">
+    <div class="col-md-5">
         <div class="card h-100">
             <div class="card-header d-flex justify-content-between align-items-center">
-                <span><i class="bi bi-pie-chart"></i> Распределение по статусам</span>
+                <span><i class="bi bi-pie-chart"></i> Распределение по разделам</span>
             </div>
             <div class="card-body">
-                {% for key, label in statuses.items() %}
+                {% for key in sections_order %}
+                {% set sec = sections[key] %}
                 <div class="d-flex justify-content-between align-items-center mb-2">
                     <span class="d-flex align-items-center">
-                        <span class="status-dot" style="background:{{ status_colors.get(key, '#6c757d') }}"></span>
-                        <small>{{ label }}</small>
+                        <span class="status-dot" style="background:{{ sec.step_colors[sec.steps[0]] }}"></span>
+                        <small>{{ sec.label }}</small>
                     </span>
-                    <span class="badge" style="background:{{ status_colors.get(key, '#6c757d') }}">
-                        {{ by_status.get(key, 0) }}
+                    <span class="badge" style="background:{{ sec.step_colors[sec.steps[0]] }}">
+                        {{ section_stats.get(key, 0) }}
                     </span>
                 </div>
                 {% endfor %}
             </div>
         </div>
     </div>
-    <div class="col-md-8">
+    <div class="col-md-7">
         <div class="card h-100">
             <div class="card-header d-flex justify-content-between align-items-center">
                 <span><i class="bi bi-megaphone"></i> Новости и события</span>
@@ -141,7 +142,8 @@
 {% block scripts %}
 <script>
 document.querySelectorAll('.stat-number').forEach(el => {
-    const target = parseInt(el.textContent.replace(/\s/g, '').replace(/[^0-9]/g, ''));
+    const text = el.textContent.replace(/\s/g, '').replace(/[^0-9]/g, '');
+    const target = parseInt(text);
     if (target > 0 && target < 10000) {
         let current = 0;
         const step = Math.max(1, Math.floor(target / 30));

@@ -1,19 +1,19 @@
 """Монитор договоров организации.
 
-Flask-приложение для отслеживания жизненного цикла договоров:
-получение, оформление, согласование, подписание, архивирование.
+Flask-приложение для отслеживания жизненного цикла договоров
+по разделам: Заключение, Исполнение, Изменение, Хранение, Архив.
 
-Версия: 1.1.0
+Версия: 2.0.0
 """
 
 import json
 import os
 import pandas as pd
-from datetime import datetime
-from flask import Flask, render_template, request, jsonify, redirect, url_for
+from datetime import datetime, timedelta
+from flask import Flask, render_template, request, jsonify
 from sqlalchemy import or_
 from werkzeug.utils import secure_filename
-from models import db, Contract, STATUSES, STATUS_ORDER
+from models import db, Contract, SECTIONS, SECTIONS_ORDER, get_section
 
 app = Flask(__name__)
 app.config['SECRET_KEY'] = os.environ.get('SECRET_KEY', 'dogovor-secret-key')
@@ -25,83 +25,62 @@ os.makedirs(app.config['UPLOAD_FOLDER'], exist_ok=True)
 
 db.init_app(app)
 
-@app.template_filter('format_date')
-def format_date_filter(value):
-    from datetime import datetime as dt
-    months = {
-        1: 'января', 2: 'февраля', 3: 'марта', 4: 'апреля',
-        5: 'мая', 6: 'июня', 7: 'июля', 8: 'августа',
-        9: 'сентября', 10: 'октября', 11: 'ноября', 12: 'декабря'
-    }
-    now = dt.now()
-    return f'{now.day} {months[now.month]} {now.year} г.'
-
-
-STATUS_COLORS = {
-    'received': '#4A90D9',
-    'processing': '#00B4D8',
-    'approval': '#F4A261',
-    'revision': '#E76F51',
-    'signing': '#9B5DE5',
-    'sent': '#6C63FF',
-    'archive': '#2A9D8F',
-    'destroyed': '#6C757D',
-}
-
 SAMPLE_DATA_PATH = os.path.join(os.path.dirname(__file__), 'sample_data.json')
-
 SAVED_REPORTS_PATH = os.path.join(os.path.dirname(__file__), 'saved_reports.json')
 
 DEFAULT_REPORTS = [
     {
         "id": "report_active",
-        "title": "Активные договоры",
-        "description": "Все договоры в работе (кроме архивных и уничтоженных)",
+        "title": "Все активные",
+        "description": "Договоры в Заключении и Исполнении",
         "icon": "bi-activity",
         "color": "#0d6efd",
-        "filters": {"status_neg": ["archive", "destroyed"]}
+        "filters": {"sections": ["conclusion", "execution"]}
     },
     {
-        "id": "report_approval",
-        "title": "На согласовании",
-        "description": "Договоры, требующие согласования",
-        "icon": "bi-clock-history",
-        "color": "#F4A261",
-        "filters": {"status": "approval"}
+        "id": "report_conclusion",
+        "title": "Заключение",
+        "description": "На этапе заключения",
+        "icon": "bi-file-text",
+        "color": "#4A90D9",
+        "filters": {"sections": ["conclusion"]}
     },
     {
-        "id": "report_signing",
-        "title": "На подписание",
-        "description": "Договоры ожидающие подписания руководителем",
+        "id": "report_modification",
+        "title": "Изменения (ДС)",
+        "description": "Допсоглашения в работе",
         "icon": "bi-pen",
-        "color": "#9B5DE5",
-        "filters": {"status": "signing"}
+        "color": "#E67E22",
+        "filters": {"sections": ["modification"]}
     },
     {
-        "id": "report_archive",
-        "title": "Архив договоров",
-        "description": "Завершённые договоры в архиве",
+        "id": "report_storage",
+        "title": "На хранении",
+        "description": "Договоры в архивохранилище",
         "icon": "bi-archive",
         "color": "#2A9D8F",
-        "filters": {"status": "archive"}
+        "filters": {"sections": ["storage"]}
     },
     {
         "id": "report_large",
-        "title": "Крупные договоры",
-        "description": "Договоры на сумму свыше 1 000 000 ₽",
+        "title": "Крупные (>1 млн)",
+        "description": "Договоры от 1 000 000 ₽",
         "icon": "bi-cash-stack",
         "color": "#198754",
         "filters": {"amount_min": 1000000}
     },
-    {
-        "id": "report_month",
-        "title": "Договоры за последний месяц",
-        "description": "Поступившие за последние 30 дней",
-        "icon": "bi-calendar-event",
-        "color": "#E76F51",
-        "filters": {"period": "month"}
-    },
 ]
+
+
+@app.template_filter('format_date')
+def format_date_filter(value):
+    months = {
+        1: 'января', 2: 'февраля', 3: 'марта', 4: 'апреля',
+        5: 'мая', 6: 'июня', 7: 'июля', 8: 'августа',
+        9: 'сентября', 10: 'октября', 11: 'ноября', 12: 'декабря'
+    }
+    now = datetime.now()
+    return f'{now.day} {months[now.month]} {now.year} г.'
 
 
 def load_saved_reports():
@@ -123,38 +102,63 @@ def load_sample_data():
         return
     with open(SAMPLE_DATA_PATH, 'r', encoding='utf-8') as f:
         data = json.load(f)
+
+    parent_map = {}
     for item in data:
-        dates = {}
-        for field in ('received_date', 'processing_date', 'approval_date',
-                      'revision_date', 'signing_date', 'sent_date',
-                      'archive_date', 'destroyed_date'):
-            if item.get(field):
-                try:
-                    dates[field] = datetime.fromisoformat(item[field])
-                except (ValueError, TypeError):
-                    dates[field] = None
-            else:
-                dates[field] = None
-        contract = Contract(
-            number=item.get('number'),
-            name=item.get('name'),
-            counterparty=item.get('counterparty'),
-            subject=item.get('subject'),
-            amount=item.get('amount'),
-            status=item.get('status', 'received'),
-            responsible=item.get('responsible'),
-            notes=item.get('notes'),
-            received_date=dates['received_date'],
-            processing_date=dates['processing_date'],
-            approval_date=dates['approval_date'],
-            revision_date=dates['revision_date'],
-            signing_date=dates['signing_date'],
-            sent_date=dates['sent_date'],
-            archive_date=dates['archive_date'],
-            destroyed_date=dates['destroyed_date'],
-        )
-        db.session.add(contract)
+        if item.get('parent_number'):
+            parent_map[item['number']] = item['parent_number']
+
+    for item in data:
+        if item.get('parent_number'):
+            continue
+        _create_contract_from_dict(item)
+
+    for item in data:
+        if item.get('parent_number'):
+            parent = Contract.query.filter_by(number=item['parent_number']).first()
+            if parent:
+                c = _create_contract_from_dict(item)
+                c.parent_id = parent.id
+                db.session.add(c)
     db.session.commit()
+
+
+def _create_contract_from_dict(item):
+    dates = {}
+    for field in ('received_date', 'processing_date', 'approval_date',
+                  'revision_date', 'signing_date', 'sent_date',
+                  'archive_date', 'destroyed_date'):
+        if item.get(field):
+            try:
+                dates[field] = datetime.fromisoformat(item[field])
+            except (ValueError, TypeError):
+                dates[field] = None
+        else:
+            dates[field] = None
+
+    contract = Contract(
+        number=item.get('number'),
+        name=item.get('name'),
+        counterparty=item.get('counterparty'),
+        subject=item.get('subject'),
+        amount=item.get('amount'),
+        status=item.get('status', 'received'),
+        responsible=item.get('responsible'),
+        notes=item.get('notes'),
+        sections=json.dumps(item.get('sections', ['conclusion'])),
+        section_steps=json.dumps(item.get('section_steps', {'conclusion': 'received'})),
+        contract_type=item.get('contract_type', 'main'),
+        received_date=dates['received_date'],
+        processing_date=dates['processing_date'],
+        approval_date=dates['approval_date'],
+        revision_date=dates['revision_date'],
+        signing_date=dates['signing_date'],
+        sent_date=dates['sent_date'],
+        archive_date=dates['archive_date'],
+        destroyed_date=dates['destroyed_date'],
+    )
+    db.session.add(contract)
+    return contract
 
 
 def parse_date(val):
@@ -242,6 +246,9 @@ def import_excel(filepath):
         if not any([data.get('number'), data.get('name'), data.get('counterparty')]):
             continue
 
+        data['sections'] = json.dumps(['conclusion'])
+        data['section_steps'] = json.dumps({'conclusion': data.get('status', 'received')})
+
         contract = Contract(**data)
         db.session.add(contract)
         imported += 1
@@ -251,8 +258,8 @@ def import_excel(filepath):
 
 
 def apply_filters(query, filters):
+    sections_filter = filters.get('sections')
     status = filters.get('status')
-    status_neg = filters.get('status_neg')
     search = filters.get('search', '').strip()
     date_from = filters.get('date_from')
     date_to = filters.get('date_to')
@@ -260,12 +267,17 @@ def apply_filters(query, filters):
     amount_max = filters.get('amount_max')
     period = filters.get('period')
 
-    if status and status in STATUSES:
-        query = query.filter(Contract.status == status)
+    if sections_filter:
+        parts = sections_filter.split(',')
+        for sec in parts:
+            sec = sec.strip()
+            if sec in SECTIONS:
+                like = f'%"{sec}"%'
+                query = query.filter(Contract.sections.like(like))
 
-    if status_neg:
-        for s in status_neg:
-            query = query.filter(Contract.status != s)
+    if status and status in [s for sec in SECTIONS for s in SECTIONS[sec]['steps']]:
+        like = f'%"{status}"%'
+        query = query.filter(Contract.section_steps.like(like))
 
     if search:
         like = f'%{search}%'
@@ -294,7 +306,6 @@ def apply_filters(query, filters):
             pass
 
     if period == 'month':
-        from datetime import timedelta
         dt = datetime.utcnow() - timedelta(days=30)
         query = query.filter(Contract.received_date >= dt)
 
@@ -313,15 +324,24 @@ def apply_filters(query, filters):
     return query
 
 
+def get_section_stats():
+    stats = {}
+    for key in SECTIONS_ORDER:
+        like = f'%"{key}"%'
+        count = Contract.query.filter(Contract.sections.like(like)).count()
+        stats[key] = count
+    return stats
+
+
+# --- HTML routes ---
+
 @app.route('/')
 def info():
     total = Contract.query.count()
-    by_status = {}
-    for key in STATUSES:
-        by_status[key] = Contract.query.filter(Contract.status == key).count()
-    active_count = total - by_status.get('archive', 0) - by_status.get('destroyed', 0)
+    section_stats = get_section_stats()
+    active = section_stats.get('conclusion', 0) + section_stats.get('execution', 0)
     total_amount = db.session.query(db.func.sum(Contract.amount)).scalar() or 0
-    signing_count = by_status.get('signing', 0) + by_status.get('sent', 0)
+    in_storage = section_stats.get('storage', 0) + section_stats.get('archive', 0)
 
     news_items = [
         {
@@ -343,8 +363,8 @@ def info():
         {
             "date": "05.06.2026",
             "title": "День архива — сшей архивный документ!",
-            "body": "Сегодня день архивного работника. Проверьте, все ли "
-                    "исполненные договоры сданы в архив. Срок хранения — 5 лет.",
+            "body": "Проверьте, все ли исполненные договоры сданы в архив. "
+                    "Срок хранения — 5 лет.",
             "tag": "Событие",
             "tag_color": "#198754"
         },
@@ -366,7 +386,7 @@ def info():
         },
         {
             "date": "25.05.2026",
-            "title": "Скоро: семинар по договорной работе",
+            "title": "Семинар по договорной работе",
             "body": "20 июня состоится семинар «Актуальные вопросы договорной "
                     "работы». Приглашаются все сотрудники бюро.",
             "tag": "Анонс",
@@ -377,38 +397,62 @@ def info():
     return render_template(
         'info.html',
         total=total,
-        active_count=active_count,
+        active_count=active,
         total_amount=total_amount,
-        signing_count=signing_count,
-        by_status=by_status,
+        in_storage=in_storage,
+        section_stats=section_stats,
+        sections=SECTIONS,
+        sections_order=SECTIONS_ORDER,
         news_items=news_items,
-        statuses=STATUSES,
-        status_colors=STATUS_COLORS,
     )
 
 
 @app.route('/board')
-def board():
-    contracts = Contract.query.order_by(Contract.created_at.desc()).all()
-    board_data = {key: [] for key in STATUSES}
+def board_view():
+    section_stats = get_section_stats()
+    return render_template('board.html', sections=SECTIONS,
+                           sections_order=SECTIONS_ORDER, stats=section_stats)
+
+
+@app.route('/board/<section_key>')
+def section_detail(section_key):
+    if section_key not in SECTIONS:
+        return render_template('board.html', sections=SECTIONS,
+                               sections_order=SECTIONS_ORDER, stats=get_section_stats())
+
+    sec = get_section(section_key)
+    like = f'%"{section_key}"%'
+    contracts = Contract.query.filter(Contract.sections.like(like)).all()
+
+    board_data = {step: [] for step in sec['steps']}
     for c in contracts:
-        board_data[c.status].append(c.to_dict())
-    return render_template('index.html', board=board_data, statuses=STATUSES,
-                           status_colors=STATUS_COLORS)
+        steps = c.get_section_steps_dict()
+        step = steps.get(section_key, sec['steps'][0])
+        if step in board_data:
+            board_data[step].append(c.to_dict())
+        else:
+            board_data[sec['steps'][0]].append(c.to_dict())
+
+    return render_template('section.html', section_key=section_key,
+                           section=sec, board=board_data, all_sections=SECTIONS,
+                           sections_order=SECTIONS_ORDER)
 
 
 @app.route('/database')
 def database():
     contracts = Contract.query.order_by(Contract.created_at.desc()).all()
     return render_template('database.html', contracts=[c.to_dict() for c in contracts],
-                           statuses=STATUSES)
+                           sections=SECTIONS, sections_order=SECTIONS_ORDER)
 
 
 @app.route('/reports')
 def reports():
     saved = load_saved_reports()
-    return render_template('reports.html', statuses=STATUSES, saved_reports=saved)
+    return render_template('reports.html', sections=SECTIONS,
+                           sections_order=SECTIONS_ORDER, saved_reports=saved)
 
+
+# --- API routes ---
 
 @app.route('/api/contracts')
 def api_contracts():
@@ -418,23 +462,39 @@ def api_contracts():
     return jsonify([c.to_dict() for c in contracts])
 
 
+@app.route('/api/contracts/<section_key>')
+def api_contracts_by_section(section_key):
+    if section_key not in SECTIONS:
+        return jsonify([])
+    sec = get_section(section_key)
+    like = f'%"{section_key}"%'
+    query = Contract.query.filter(Contract.sections.like(like))
+    query = apply_filters(query, request.args)
+    contracts = query.order_by(Contract.created_at.desc()).all()
+    board_data = {step: [] for step in sec['steps']}
+    for c in contracts:
+        steps = c.get_section_steps_dict()
+        step = steps.get(section_key, sec['steps'][0])
+        if step in board_data:
+            board_data[step].append(c.to_dict())
+        else:
+            board_data[sec['steps'][0]].append(c.to_dict())
+    return jsonify(board_data)
+
+
 @app.route('/api/import', methods=['POST'])
 def api_import():
     if 'file' not in request.files:
         return jsonify({'error': 'Файл не найден'}), 400
-
     file = request.files['file']
     if not file.filename:
         return jsonify({'error': 'Файл не выбран'}), 400
-
     ext = os.path.splitext(file.filename)[1].lower()
     if ext not in ('.xlsx', '.xls'):
         return jsonify({'error': 'Поддерживаются только файлы Excel (.xlsx, .xls)'}), 400
-
     filename = secure_filename(f'import_{datetime.now().strftime("%Y%m%d_%H%M%S")}{ext}')
     filepath = os.path.join(app.config['UPLOAD_FOLDER'], filename)
     file.save(filepath)
-
     try:
         count = import_excel(filepath)
         return jsonify({'message': f'Импортировано {count} договоров', 'count': count})
@@ -449,26 +509,42 @@ def api_move_contract(contract_id):
         return jsonify({'error': 'Договор не найден'}), 404
 
     data = request.get_json()
-    new_status = data.get('status')
-    if new_status not in STATUSES:
-        return jsonify({'error': 'Некорректный статус'}), 400
+    section_key = data.get('section')
+    new_step = data.get('step')
 
-    contract.status = new_status
+    if not section_key or section_key not in SECTIONS:
+        return jsonify({'error': 'Некорректный раздел'}), 400
+    sec = get_section(section_key)
+    if new_step not in sec['steps']:
+        return jsonify({'error': 'Некорректный шаг'}), 400
+
+    steps = contract.get_section_steps_dict()
+    steps[section_key] = new_step
+    contract.section_steps = json.dumps(steps)
+
+    sections = contract.get_sections_list()
+    if section_key not in sections:
+        sections.append(section_key)
+        contract.sections = json.dumps(sections)
+
     date_now = datetime.utcnow()
     date_map = {
-        'received': 'received_date',
-        'processing': 'processing_date',
-        'approval': 'approval_date',
-        'revision': 'revision_date',
-        'signing': 'signing_date',
-        'sent': 'sent_date',
-        'archive': 'archive_date',
-        'destroyed': 'destroyed_date',
+        'conclusion': {'received': 'received_date', 'processing': 'processing_date',
+                       'approval': 'approval_date', 'revision': 'revision_date',
+                       'signing': 'signing_date', 'sent': 'sent_date'},
+        'execution': {},
+        'modification': {'received': 'received_date', 'processing': 'processing_date',
+                         'approval': 'approval_date', 'revision': 'revision_date',
+                         'signing': 'signing_date', 'sent': 'sent_date'},
+        'storage': {},
+        'archive': {'pending_destruction': None, 'destroyed': 'destroyed_date'},
     }
-    date_field = date_map.get(new_status)
-    if date_field:
+    field_map = date_map.get(section_key, {})
+    date_field = field_map.get(new_step)
+    if date_field and not getattr(contract, date_field):
         setattr(contract, date_field, date_now)
 
+    contract.status = new_step
     db.session.commit()
     return jsonify(contract.to_dict())
 
@@ -488,13 +564,11 @@ def api_update_contract(contract_id):
     contract = db.session.get(Contract, contract_id)
     if not contract:
         return jsonify({'error': 'Договор не найден'}), 404
-
     data = request.get_json()
     for field in ('number', 'name', 'counterparty', 'subject', 'amount',
                   'responsible', 'notes'):
         if field in data:
             setattr(contract, field, data[field])
-
     for date_field in ('received_date', 'processing_date', 'approval_date',
                        'revision_date', 'signing_date', 'sent_date',
                        'archive_date', 'destroyed_date'):
@@ -503,7 +577,6 @@ def api_update_contract(contract_id):
                 setattr(contract, date_field, datetime.fromisoformat(data[date_field]))
             except (ValueError, TypeError):
                 pass
-
     db.session.commit()
     return jsonify(contract.to_dict())
 
@@ -511,10 +584,17 @@ def api_update_contract(contract_id):
 @app.route('/api/stats')
 def api_stats():
     total = Contract.query.count()
-    by_status = {}
-    for key in STATUSES:
-        by_status[key] = Contract.query.filter(Contract.status == key).count()
-    return jsonify({'total': total, 'by_status': by_status})
+    section_stats = get_section_stats()
+    by_section = {}
+    for key in SECTIONS_ORDER:
+        like = f'%"{key}"%'
+        by_section[key] = Contract.query.filter(Contract.sections.like(like)).count()
+    total_amount = db.session.query(db.func.sum(Contract.amount)).scalar() or 0
+    return jsonify({
+        'total': total,
+        'total_amount': total_amount,
+        'by_section': section_stats,
+    })
 
 
 @app.route('/api/clear', methods=['POST'])
@@ -554,13 +634,35 @@ def api_delete_report(report_id):
     return jsonify({'message': 'Отчёт удалён'})
 
 
+@app.route('/api/contract/<int:contract_id>/additional', methods=['POST'])
+def api_add_additional(contract_id):
+    parent = db.session.get(Contract, contract_id)
+    if not parent:
+        return jsonify({'error': 'Договор не найден'}), 404
+    data = request.get_json()
+    child = Contract(
+        number=data.get('number', f'{parent.number}/ДС'),
+        name=data.get('name', 'Дополнительное соглашение'),
+        counterparty=parent.counterparty,
+        subject=data.get('subject', ''),
+        amount=data.get('amount', 0),
+        status='received',
+        sections=json.dumps(['modification']),
+        section_steps=json.dumps({'modification': 'received'}),
+        contract_type='additional',
+        parent_id=parent.id,
+        responsible=parent.responsible,
+        notes=data.get('notes', ''),
+        received_date=datetime.utcnow(),
+    )
+    db.session.add(child)
+    db.session.commit()
+    return jsonify(child.to_dict()), 201
+
+
 @app.route('/api/shutdown', methods=['POST'])
 def api_shutdown():
-    func = request.environ.get('werkzeug.server.shutdown')
-    if func:
-        func()
-        return jsonify({'message': 'Сервер остановлен'})
-    return jsonify({'error': 'Не удалось остановить сервер'}), 500
+    os._exit(0)
 
 
 with app.app_context():
@@ -568,4 +670,4 @@ with app.app_context():
     load_sample_data()
 
 if __name__ == '__main__':
-    app.run(debug=True, host='0.0.0.0', port=5000)
+    app.run(debug=True, use_reloader=False, host='0.0.0.0', port=5000)

@@ -1,0 +1,61 @@
+{% extends 'base.html' %}
+{% block title %}{{ section.label }}{% endblock %}
+
+{% block content %}
+<nav aria-label="breadcrumb" class="mb-3">
+    <ol class="breadcrumb">
+        <li class="breadcrumb-item"><a href="{{ url_for('board_view') }}">Доска разделов</a></li>
+        <li class="breadcrumb-item active">{{ section.label }}</li>
+    </ol>
+</nav>
+
+<div class="d-flex justify-content-between align-items-center mb-3">
+    <h4 class="mb-0">
+        <i class="bi bi-kanban"></i> {{ section.label }}
+        <small class="text-muted fs-6">— доска движения</small>
+    </h4>
+    <div>
+        <button class="btn btn-outline-primary btn-sm" onclick="document.getElementById('fileInput').click()">
+            <i class="bi bi-upload"></i> Загрузить Excel
+        </button>
+        <a href="{{ url_for('database') }}" class="btn btn-outline-secondary btn-sm">
+            <i class="bi bi-table"></i> База
+        </a>
+    </div>
+</div>
+
+<input type="file" id="fileInput" accept=".xlsx,.xls" style="display:none">
+
+<div class="kanban-board" id="kanbanBoard">
+    {% for step in section.steps %}
+    <div class="kanban-column" data-section="{{ section_key }}" data-step="{{ step }}">
+        <div class="column-header" style="background: {{ section.step_colors[step] }}">
+            <h6>{{ section.step_labels[step] }}</h6>
+            <span class="badge bg-light text-dark count-badge">{{ board[step]|length }}</span>
+        </div>
+        <div class="column-body" id="column-{{ step }}">
+            {% for contract in board[step] %}
+            <div class="card contract-card" data-id="{{ contract.id }}" onclick="showContractDetail({{ contract.id }})">
+                <div class="card-body p-2">
+                    <div class="d-flex justify-content-between">
+                        <strong class="text-truncate">{{ contract.number or 'б/н' }}</strong>
+                        <small class="text-muted ms-1">{{ contract.amount|round(2) }} ₽</small>
+                    </div>
+                    <small class="d-block text-truncate">{{ contract.counterparty }}</small>
+                    <small class="d-block text-truncate text-muted">{{ contract.name }}</small>
+                    {% if contract.contract_type == 'additional' %}
+                    <span class="badge bg-warning text-dark" style="font-size:0.6rem">ДС</span>
+                    {% endif %}
+                    {% if contract.sections|length > 1 %}
+                    <span class="badge bg-info" style="font-size:0.6rem">+{{ contract.sections|length - 1 }}</span>
+                    {% endif %}
+                </div>
+            </div>
+            {% endfor %}
+        </div>
+    </div>
+    {% endfor %}
+</div>
+
+{% include 'modals.html' %}
+{% endblock %}

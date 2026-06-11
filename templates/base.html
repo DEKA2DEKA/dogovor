@@ -18,7 +18,7 @@
                 <a class="nav-link {% if request.endpoint == 'info' %}active{% endif %}" href="{{ url_for('info') }}">
                     <i class="bi bi-info-circle"></i> Информация
                 </a>
-                <a class="nav-link {% if request.endpoint == 'board' %}active{% endif %}" href="{{ url_for('board') }}">
+                <a class="nav-link {% if request.endpoint == 'board_view' %}active{% endif %}" href="{{ url_for('board_view') }}">
                     <i class="bi bi-kanban"></i> Доска
                 </a>
                 <a class="nav-link {% if request.endpoint == 'database' %}active{% endif %}" href="{{ url_for('database') }}">
