@@ -46,9 +46,11 @@
             <h6>{{ col_label }}</h6>
             <span class="badge bg-light text-dark count-badge">{{ board.get(col_key, [])|length }}</span>
         </div>
-        <div class="column-body" id="column-{{ col_key }}">
+        <div class="column-body" id="column-{{ col_key }}" data-section="{{ section_key }}" data-step="{{ col_key }}">
             {% for contract in board.get(col_key, []) %}
-            <div class="card contract-card" data-id="{{ contract.id }}" onclick="showContractDetail({{ contract.id }})">
+            <div class="card contract-card" draggable="{% if col_key.startswith('__') %}false{% else %}true{% endif %}"
+                 data-id="{{ contract.id }}"
+                 onclick="showContractDetail({{ contract.id }})">
                 <div class="card-body p-2">
                     <div class="d-flex justify-content-between">
                         <strong class="text-truncate">{{ contract.number or 'б/н' }}</strong>

@@ -149,6 +149,7 @@ def _create_contract_from_dict(item):
         sections=json.dumps(item.get('sections', ['conclusion'])),
         section_steps=json.dumps(item.get('section_steps', {'conclusion': 'received'})),
         contract_type=item.get('contract_type', 'main'),
+        sort_order=item.get('sort_order', 0.0),
         received_date=dates['received_date'],
         processing_date=dates['processing_date'],
         approval_date=dates['approval_date'],
@@ -250,7 +251,7 @@ def import_excel(filepath):
         data['sections'] = json.dumps(['conclusion'])
         data['section_steps'] = json.dumps({'conclusion': data.get('status', 'received')})
 
-        contract = Contract(**data)
+        contract = Contract(**data, sort_order=float(imported))
         db.session.add(contract)
         imported += 1
 
@@ -426,7 +427,7 @@ def section_detail(section_key):
     display_columns = get_display_columns(section_key)
 
     like = f'%"{section_key}"%'
-    contracts = Contract.query.filter(Contract.sections.like(like)).all()
+    contracts = Contract.query.filter(Contract.sections.like(like)).order_by(Contract.sort_order).all()
 
     board_data = {}
     for col_key, _, _ in display_columns:
@@ -445,7 +446,7 @@ def section_detail(section_key):
         first_step = nsec['steps'][0]
         next_col = f'__next__{first_step}'
         next_like = f'%"{next_key}"%'
-        next_contracts = Contract.query.filter(Contract.sections.like(next_like)).all()
+        next_contracts = Contract.query.filter(Contract.sections.like(next_like)).order_by(Contract.sort_order).all()
         for c in next_contracts:
             nsteps = c.get_section_steps_dict()
             if nsteps.get(next_key) == first_step:
@@ -551,6 +552,15 @@ def api_move_contract(contract_id):
                 steps[section_key] = '__incoming__'
         contract.section_steps = json.dumps(steps)
         contract.status = steps.get(section_key, sec['steps'][0])
+        new_step = steps.get(section_key)
+        if new_step and new_step not in ('__incoming__',) and not new_step.startswith('__next__'):
+            like_sec = f'%"{section_key}"%'
+            exist = Contract.query.filter(
+                Contract.id != contract.id,
+                Contract.sections.like(like_sec),
+                Contract.section_steps.like(f'%"{new_step}"%'),
+            ).count()
+            contract.sort_order = float(exist)
         db.session.commit()
         return jsonify(contract.to_dict())
 
@@ -580,6 +590,14 @@ def api_move_contract(contract_id):
         return jsonify({'error': 'Некорректный шаг'}), 400
 
     contract.section_steps = json.dumps(steps)
+    if new_step not in ('__incoming__',) and not new_step.startswith('__next__'):
+        like_sec = f'%"{section_key}"%'
+        exist = Contract.query.filter(
+            Contract.id != contract.id,
+            Contract.sections.like(like_sec),
+            Contract.section_steps.like(f'%"{new_step}"%'),
+        ).count()
+        contract.sort_order = float(exist)
     sections = contract.get_sections_list()
     if section_key not in sections:
         sections.append(section_key)
@@ -605,6 +623,24 @@ def api_move_contract(contract_id):
     contract.status = steps.get(section_key, sec['steps'][0])
     db.session.commit()
     return jsonify(contract.to_dict())
+
+
+@app.route('/api/reorder', methods=['POST'])
+def api_reorder():
+    data = request.get_json()
+    section_key = data.get('section')
+    step_key = data.get('step')
+    contract_ids = data.get('contract_ids', [])
+
+    if not section_key or not step_key:
+        return jsonify({'error': 'Некорректные параметры'}), 400
+
+    for i, cid in enumerate(contract_ids):
+        contract = db.session.get(Contract, cid)
+        if contract:
+            contract.sort_order = float(i)
+    db.session.commit()
+    return jsonify({'message': 'Порядок обновлён'})
 
 
 @app.route('/api/contract/<int:contract_id>', methods=['DELETE'])

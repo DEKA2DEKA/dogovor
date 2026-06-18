@@ -180,6 +180,7 @@ class Contract(db.Model):
     sent_date = db.Column(db.DateTime, nullable=True)
     archive_date = db.Column(db.DateTime, nullable=True)
     destroyed_date = db.Column(db.DateTime, nullable=True)
+    sort_order = db.Column(db.Float, default=0.0)
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
     updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
@@ -221,6 +222,7 @@ class Contract(db.Model):
             'notes': self.notes or '',
             'sections': secs,
             'section_steps': steps,
+            'sort_order': self.sort_order or 0,
             'contract_type': self.contract_type or 'main',
             'parent_id': self.parent_id,
             'children': children_list,
@@ -246,4 +248,5 @@ class Contract(db.Model):
             'sections': secs,
             'section_steps': steps,
             'contract_type': self.contract_type or 'main',
+            'sort_order': self.sort_order or 0,
         }

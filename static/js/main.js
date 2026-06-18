@@ -251,34 +251,81 @@ function deleteContract(id) {
     modal.show();
 }
 
-function clearAll() {
-    document.getElementById('confirmBody').textContent = 'Удалить ВСЕ договоры? Это необратимо.';
-    const modal = new bootstrap.Modal(document.getElementById('confirmModal'));
-    const btn = document.getElementById('confirmBtn');
-    btn.className = 'btn btn-danger';
-    const handler = () => {
-        fetch('/api/clear', { method: 'POST' })
-            .then(r => r.json())
-            .then(() => location.reload())
-            .catch(() => alert('Ошибка'));
-        btn.removeEventListener('click', handler);
-    };
-    btn.addEventListener('click', handler);
-    modal.show();
-}
+// --- Drag and Drop ---
 
-function stopServer() {
-    document.getElementById('confirmBody').textContent = 'Остановить сервер? Все данные сохранятся.';
-    const modal = new bootstrap.Modal(document.getElementById('confirmModal'));
-    const btn = document.getElementById('confirmBtn');
-    btn.className = 'btn btn-danger';
-    const handler = () => {
-        fetch('/api/shutdown', { method: 'POST' })
-            .then(r => r.json())
-            .then(data => alert(data.message || 'Сервер остановлен'))
-            .catch(() => alert('Сервер остановлен'));
-        btn.removeEventListener('click', handler);
-    };
-    btn.addEventListener('click', handler);
-    modal.show();
+let dragSrcId = null;
+
+document.addEventListener('DOMContentLoaded', function () {
+    const board = document.getElementById('kanbanBoard');
+    if (!board) return;
+
+    board.addEventListener('dragstart', function (e) {
+        const card = e.target.closest('.contract-card');
+        if (!card) return;
+        dragSrcId = card.dataset.id;
+        card.classList.add('dragging');
+        e.dataTransfer.effectAllowed = 'move';
+        e.dataTransfer.setData('text/plain', dragSrcId);
+    });
+
+    board.addEventListener('dragend', function (e) {
+        const card = e.target.closest('.contract-card');
+        if (card) card.classList.remove('dragging');
+        document.querySelectorAll('.column-body.drag-over').forEach(el => el.classList.remove('drag-over'));
+    });
+
+    board.addEventListener('dragover', function (e) {
+        e.preventDefault();
+        const column = e.target.closest('.column-body');
+        if (!column || column.dataset.step.startsWith('__')) return;
+        e.dataTransfer.dropEffect = 'move';
+        column.classList.add('drag-over');
+
+        const afterCard = getDragAfterElement(column, e.clientY);
+        const dragging = document.querySelector('.contract-card.dragging');
+        if (dragging && afterCard) {
+            column.insertBefore(dragging, afterCard);
+        } else if (dragging) {
+            column.appendChild(dragging);
+        }
+    });
+
+    board.addEventListener('dragleave', function (e) {
+        const column = e.target.closest('.column-body');
+        if (column) column.classList.remove('drag-over');
+    });
+
+    board.addEventListener('drop', function (e) {
+        e.preventDefault();
+        const column = e.target.closest('.column-body');
+        if (!column) return;
+        column.classList.remove('drag-over');
+        const step = column.dataset.step;
+        if (step.startsWith('__')) return;
+
+        const section = column.dataset.section;
+        const ids = Array.from(column.querySelectorAll('.contract-card')).map(el => parseInt(el.dataset.id));
+        if (ids.length === 0) return;
+
+        fetch('/api/reorder', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ section, step, contract_ids: ids }),
+        }).catch(err => console.error('Reorder error:', err));
+    });
+});
+
+function getDragAfterElement(container, y) {
+    const cards = container.querySelectorAll('.contract-card:not(.dragging)');
+    let closest = null;
+    let closestOffset = Number.NEGATIVE_INFINITY;
+    cards.forEach(card => {
+        const box = card.getBoundingClientRect();
+        const offset = y - card.offsetHeight / 2;
+        if (offset < 0 && offset > closestOffset) {
+            closestOffset = offset;
+            closest = card;
+        }
+    });
+    return closest;
 }
