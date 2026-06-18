@@ -329,3 +329,35 @@ function getDragAfterElement(container, y) {
     });
     return closest;
 }
+
+function clearAll() {
+    document.getElementById('confirmBody').textContent = 'Удалить ВСЕ договоры? Это необратимо.';
+    const modal = new bootstrap.Modal(document.getElementById('confirmModal'));
+    const btn = document.getElementById('confirmBtn');
+    btn.className = 'btn btn-danger';
+    const handler = () => {
+        fetch('/api/clear', { method: 'POST' })
+            .then(r => r.json())
+            .then(() => location.reload())
+            .catch(() => alert('Ошибка'));
+        btn.removeEventListener('click', handler);
+    };
+    btn.addEventListener('click', handler);
+    modal.show();
+}
+
+function stopServer() {
+    document.getElementById('confirmBody').textContent = 'Остановить сервер? Данные сохранятся в БД.';
+    const modal = new bootstrap.Modal(document.getElementById('confirmModal'));
+    const btn = document.getElementById('confirmBtn');
+    btn.className = 'btn btn-danger';
+    const handler = () => {
+        fetch('/api/shutdown', { method: 'POST' })
+            .then(r => r.json())
+            .then(data => alert(data.message || 'Сервер остановлен'))
+            .catch(() => alert('Сервер остановлен'));
+        btn.removeEventListener('click', handler);
+    };
+    btn.addEventListener('click', handler);
+    modal.show();
+}

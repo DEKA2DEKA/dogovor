@@ -8,6 +8,7 @@ Flask-приложение для отслеживания жизненного 
 
 import json
 import os
+import threading
 import pandas as pd
 from datetime import datetime, timedelta
 from flask import Flask, render_template, request, jsonify
@@ -756,7 +757,8 @@ def api_add_additional(contract_id):
 
 @app.route('/api/shutdown', methods=['POST'])
 def api_shutdown():
-    os._exit(0)
+    threading.Timer(0.5, os._exit, args=[0]).start()
+    return jsonify({'message': 'Сервер остановлен'})
 
 
 with app.app_context():
