@@ -239,6 +239,17 @@
     gap: 16px;
     box-shadow: 0 2px 8px rgba(0,0,0,0.06);
     transition: transform 0.15s, box-shadow 0.15s;
+    color: inherit;
+    cursor: pointer;
+}
+
+a.stat-card {
+    display: flex;
+    color: inherit;
+}
+
+a.stat-card:hover {
+    color: inherit;
 }
 
 .stat-card:hover {
