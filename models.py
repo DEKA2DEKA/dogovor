@@ -149,6 +149,31 @@ def default_sections():
     return json.dumps(['conclusion'])
 
 
+class News(db.Model):
+    __tablename__ = 'news'
+
+    id = db.Column(db.Integer, primary_key=True)
+    date = db.Column(db.String(20), nullable=True)
+    title = db.Column(db.String(300), nullable=False)
+    body = db.Column(db.Text, nullable=True)
+    tag = db.Column(db.String(100), nullable=True)
+    tag_color = db.Column(db.String(20), default='#6c757d')
+    is_active = db.Column(db.Boolean, default=True)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+    updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+    def to_dict(self):
+        return {
+            'id': self.id,
+            'date': self.date or '',
+            'title': self.title,
+            'body': self.body or '',
+            'tag': self.tag or '',
+            'tag_color': self.tag_color or '#6c757d',
+            'is_active': self.is_active,
+        }
+
+
 class Contract(db.Model):
     __tablename__ = 'contracts'
 

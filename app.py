@@ -14,7 +14,7 @@ from datetime import datetime, timedelta
 from flask import Flask, render_template, request, jsonify
 from sqlalchemy import or_
 from werkzeug.utils import secure_filename
-from models import (db, Contract, SECTIONS, SECTIONS_ORDER, get_section,
+from models import (db, Contract, News, SECTIONS, SECTIONS_ORDER, get_section,
                      get_next_section_key, get_prev_section_key, get_display_columns)
 
 app = Flask(__name__)
@@ -346,56 +346,7 @@ def info():
     total_amount = db.session.query(db.func.sum(Contract.amount)).scalar() or 0
     in_storage = section_stats.get('storage', 0) + section_stats.get('archive', 0)
 
-    news_items = [
-        {
-            "date": "10.06.2026",
-            "title": "Введена новая форма доверенности руководителя",
-            "body": "С 1 июля 2026 года вводится обновлённая форма доверенности "
-                    "на подписание договоров. Старые бланки действительны до 01.08.2026.",
-            "tag": "Важно",
-            "tag_color": "#dc3545"
-        },
-        {
-            "date": "08.06.2026",
-            "title": "Новая редакция типового договора поставки",
-            "body": "Утверждена редакция №5 типового договора поставки. "
-                    "Изменены пункты об ответственности сторон и форс-мажоре.",
-            "tag": "Обновление",
-            "tag_color": "#0d6efd"
-        },
-        {
-            "date": "05.06.2026",
-            "title": "День архива — сшей архивный документ!",
-            "body": "Проверьте, все ли исполненные договоры сданы в архив. "
-                    "Срок хранения — 5 лет.",
-            "tag": "Событие",
-            "tag_color": "#198754"
-        },
-        {
-            "date": "01.06.2026",
-            "title": "Мотивация дня: порядок в договорах — порядок в делах",
-            "body": "Каждый оформленный договор приближает нас к порядку "
-                    "в документообороте. Спасибо за вашу работу!",
-            "tag": "Мотивация",
-            "tag_color": "#6f42c1"
-        },
-        {
-            "date": "28.05.2026",
-            "title": "Изменение реквизитов организации",
-            "body": "Обратите внимание: с 01.06.2026 изменились банковские "
-                    "реквизиты организации. Новые данные внесены в шаблоны договоров.",
-            "tag": "Важно",
-            "tag_color": "#dc3545"
-        },
-        {
-            "date": "25.05.2026",
-            "title": "Семинар по договорной работе",
-            "body": "20 июня состоится семинар «Актуальные вопросы договорной "
-                    "работы». Приглашаются все сотрудники бюро.",
-            "tag": "Анонс",
-            "tag_color": "#F4A261"
-        },
-    ]
+    news_items = News.query.filter_by(is_active=True).order_by(News.created_at.desc()).all()
 
     return render_template(
         'info.html',
@@ -406,7 +357,7 @@ def info():
         section_stats=section_stats,
         sections=SECTIONS,
         sections_order=SECTIONS_ORDER,
-        news_items=news_items,
+        news_items=[n.to_dict() for n in news_items],
     )
 
 
@@ -761,9 +712,76 @@ def api_shutdown():
     return jsonify({'message': 'Сервер остановлен'})
 
 
+# --- News API ---
+
+@app.route('/api/news', methods=['GET'])
+def api_get_news():
+    all_news = News.query.order_by(News.created_at.desc()).all()
+    return jsonify([n.to_dict() for n in all_news])
+
+
+@app.route('/api/news', methods=['POST'])
+def api_create_news():
+    data = request.get_json()
+    item = News(
+        date=data.get('date', ''),
+        title=data.get('title', 'Без названия'),
+        body=data.get('body', ''),
+        tag=data.get('tag', ''),
+        tag_color=data.get('tag_color', '#6c757d'),
+        is_active=data.get('is_active', True),
+    )
+    db.session.add(item)
+    db.session.commit()
+    return jsonify(item.to_dict()), 201
+
+
+@app.route('/api/news/<int:news_id>', methods=['PUT'])
+def api_update_news(news_id):
+    item = db.session.get(News, news_id)
+    if not item:
+        return jsonify({'error': 'Новость не найдена'}), 404
+    data = request.get_json()
+    for field in ('date', 'title', 'body', 'tag', 'tag_color'):
+        if field in data:
+            setattr(item, field, data[field])
+    if 'is_active' in data:
+        item.is_active = bool(data['is_active'])
+    db.session.commit()
+    return jsonify(item.to_dict())
+
+
+@app.route('/api/news/<int:news_id>', methods=['DELETE'])
+def api_delete_news(news_id):
+    item = db.session.get(News, news_id)
+    if not item:
+        return jsonify({'error': 'Новость не найдена'}), 404
+    db.session.delete(item)
+    db.session.commit()
+    return jsonify({'message': 'Новость удалена'})
+
+
+def seed_news():
+    if News.query.count() > 0:
+        return
+    samples = [
+        {"date": "10.06.2026", "title": "Введена новая форма доверенности руководителя", "body": "С 1 июля 2026 года вводится обновлённая форма доверенности на подписание договоров. Старые бланки действительны до 01.08.2026.", "tag": "Важно", "tag_color": "#dc3545"},
+        {"date": "08.06.2026", "title": "Новая редакция типового договора поставки", "body": "Утверждена редакция №5 типового договора поставки. Изменены пункты об ответственности сторон и форс-мажоре.", "tag": "Обновление", "tag_color": "#0d6efd"},
+        {"date": "05.06.2026", "title": "День архива — сшей архивный документ!", "body": "Проверьте, все ли исполненные договоры сданы в архив. Срок хранения — 5 лет.", "tag": "Событие", "tag_color": "#198754"},
+        {"date": "01.06.2026", "title": "Мотивация дня: порядок в договорах — порядок в делах", "body": "Каждый оформленный договор приближает нас к порядку в документообороте. Спасибо за вашу работу!", "tag": "Мотивация", "tag_color": "#6f42c1"},
+        {"date": "28.05.2026", "title": "Изменение реквизитов организации", "body": "Обратите внимание: с 01.06.2026 изменились банковские реквизиты организации. Новые данные внесены в шаблоны договоров.", "tag": "Важно", "tag_color": "#dc3545"},
+        {"date": "25.05.2026", "title": "Семинар по договорной работе", "body": "20 июня состоится семинар «Актуальные вопросы договорной работы». Приглашаются все сотрудники бюро.", "tag": "Анонс", "tag_color": "#F4A261"},
+    ]
+    for s in samples:
+        item = News(**s)
+        db.session.add(item)
+    db.session.commit()
+
+
 with app.app_context():
     db.create_all()
     load_sample_data()
+    seed_news()
 
 if __name__ == '__main__':
     app.run(debug=True, use_reloader=False, host='0.0.0.0', port=5000)

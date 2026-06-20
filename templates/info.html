@@ -83,13 +83,20 @@
         <div class="card h-100">
             <div class="card-header d-flex justify-content-between align-items-center">
                 <span><i class="bi bi-megaphone"></i> Новости и события</span>
-                <small class="text-muted">Актуально на {{ "now"|format_date }}</small>
+                <div>
+                    <button class="btn btn-sm btn-outline-primary" onclick="showNewsForm()"><i class="bi bi-plus-lg"></i> Добавить</button>
+                    <small class="text-muted ms-2">Актуально на {{ "now"|format_date }}</small>
+                </div>
             </div>
             <div class="card-body news-feed">
                 {% for item in news_items %}
-                <div class="news-card">
+                <div class="news-card" data-news-id="{{ item.id }}">
                     <div class="d-flex justify-content-between align-items-start mb-1">
-                        <span class="news-tag" style="background:{{ item.tag_color }}">{{ item.tag }}</span>
+                        <div>
+                            <span class="news-tag" style="background:{{ item.tag_color }}">{{ item.tag }}</span>
+                            <button class="btn btn-sm btn-outline-secondary py-0 px-1 ms-1" onclick="showNewsForm({{ item.id }})" title="Редактировать"><i class="bi bi-pencil"></i></button>
+                            <button class="btn btn-sm btn-outline-danger py-0 px-1" onclick="deleteNews({{ item.id }})" title="Удалить"><i class="bi bi-trash"></i></button>
+                        </div>
                         <small class="text-muted">{{ item.date }}</small>
                     </div>
                     <h6 class="mb-1">{{ item.title }}</h6>
@@ -140,7 +147,121 @@
 {% endblock %}
 
 {% block scripts %}
+<div class="modal fade" id="newsModal" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="newsModalTitle">Новая новость</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <input type="hidden" id="newsId" value="">
+                <div class="mb-2">
+                    <label class="form-label small">Дата</label>
+                    <input type="text" class="form-control form-control-sm" id="newsDate" placeholder="10.06.2026">
+                </div>
+                <div class="mb-2">
+                    <label class="form-label small">Заголовок</label>
+                    <input type="text" class="form-control form-control-sm" id="newsTitle" placeholder="Заголовок новости">
+                </div>
+                <div class="mb-2">
+                    <label class="form-label small">Текст</label>
+                    <textarea class="form-control form-control-sm" id="newsBody" rows="2"></textarea>
+                </div>
+                <div class="mb-2">
+                    <label class="form-label small">Тег</label>
+                    <input type="text" class="form-control form-control-sm" id="newsTag" placeholder="Важно">
+                </div>
+                <div class="mb-2">
+                    <label class="form-label small">Цвет тега</label>
+                    <div class="d-flex gap-1" id="tagColorPicker">
+                        <span class="color-swatch selected" style="background:#dc3545" data-color="#dc3545"></span>
+                        <span class="color-swatch" style="background:#0d6efd" data-color="#0d6efd"></span>
+                        <span class="color-swatch" style="background:#198754" data-color="#198754"></span>
+                        <span class="color-swatch" style="background:#6f42c1" data-color="#6f42c1"></span>
+                        <span class="color-swatch" style="background:#F4A261" data-color="#F4A261"></span>
+                        <span class="color-swatch" style="background:#6c757d" data-color="#6c757d"></span>
+                    </div>
+                    <input type="hidden" id="newsTagColor" value="#dc3545">
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary btn-sm" data-bs-dismiss="modal">Отмена</button>
+                <button type="button" class="btn btn-primary btn-sm" onclick="saveNews()">Сохранить</button>
+            </div>
+        </div>
+    </div>
+</div>
 <script>
+const TAG_COLORS = ['#dc3545', '#0d6efd', '#198754', '#6f42c1', '#F4A261', '#6c757d'];
+
+document.getElementById('tagColorPicker').addEventListener('click', function(e) {
+    const swatch = e.target.closest('.color-swatch');
+    if (!swatch) return;
+    this.querySelectorAll('.color-swatch').forEach(s => s.classList.remove('selected'));
+    swatch.classList.add('selected');
+    document.getElementById('newsTagColor').value = swatch.dataset.color;
+});
+
+function showNewsForm(id) {
+    document.getElementById('newsId').value = id || '';
+    document.getElementById('newsModalTitle').textContent = id ? 'Редактировать новость' : 'Новая новость';
+    if (id) {
+        const card = document.querySelector(`.news-card[data-news-id="${id}"]`);
+        document.getElementById('newsDate').value = card.querySelector('.text-muted').textContent.trim();
+        document.getElementById('newsTitle').value = card.querySelector('h6').textContent.trim();
+        document.getElementById('newsBody').value = card.querySelector('p').textContent.trim();
+        const tagEl = card.querySelector('.news-tag');
+        document.getElementById('newsTag').value = tagEl.textContent.trim();
+        const color = tagEl.style.backgroundColor;
+        const hex = rgbToHex(color);
+        document.getElementById('newsTagColor').value = hex;
+        document.querySelectorAll('.color-swatch').forEach(s => {
+            s.classList.toggle('selected', s.dataset.color === hex);
+        });
+    } else {
+        document.getElementById('newsDate').value = new Date().toLocaleDateString('ru-RU');
+        document.getElementById('newsTitle').value = '';
+        document.getElementById('newsBody').value = '';
+        document.getElementById('newsTag').value = '';
+        document.getElementById('newsTagColor').value = '#dc3545';
+        document.querySelectorAll('.color-swatch').forEach((s, i) => s.classList.toggle('selected', i === 0));
+    }
+    new bootstrap.Modal(document.getElementById('newsModal')).show();
+}
+
+function saveNews() {
+    const id = document.getElementById('newsId').value;
+    const data = {
+        date: document.getElementById('newsDate').value,
+        title: document.getElementById('newsTitle').value,
+        body: document.getElementById('newsBody').value,
+        tag: document.getElementById('newsTag').value,
+        tag_color: document.getElementById('newsTagColor').value,
+    };
+    const url = id ? `/api/news/${id}` : '/api/news';
+    const method = id ? 'PUT' : 'POST';
+    fetch(url, { method, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(data) })
+        .then(r => r.json())
+        .then(() => location.reload())
+        .catch(() => alert('Ошибка сохранения'));
+}
+
+function deleteNews(id) {
+    if (!confirm('Удалить новость?')) return;
+    fetch(`/api/news/${id}`, { method: 'DELETE' })
+        .then(r => r.json())
+        .then(() => location.reload())
+        .catch(() => alert('Ошибка удаления'));
+}
+
+function rgbToHex(color) {
+    if (color.startsWith('#')) return color;
+    const rgb = color.match(/\d+/g);
+    if (!rgb) return '#6c757d';
+    return '#' + rgb.slice(0,3).map(x => parseInt(x).toString(16).padStart(2,'0')).join('');
+}
+
 document.querySelectorAll('.stat-number').forEach(el => {
     const text = el.textContent.replace(/\s/g, '').replace(/[^0-9]/g, '');
     const target = parseInt(text);
