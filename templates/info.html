@@ -12,7 +12,7 @@
 
 <div class="row g-3 mb-4">
     <div class="col-md-3">
-        <div class="stat-card">
+        <a href="{{ url_for('database') }}" class="stat-card text-decoration-none">
             <div class="stat-icon bg-primary">
                 <i class="bi bi-file-text"></i>
             </div>
@@ -20,10 +20,10 @@
                 <div class="stat-number">{{ total }}</div>
                 <div class="stat-label">Всего договоров</div>
             </div>
-        </div>
+        </a>
     </div>
     <div class="col-md-3">
-        <div class="stat-card">
+        <a href="{{ url_for('board_view') }}" class="stat-card text-decoration-none">
             <div class="stat-icon bg-success">
                 <i class="bi bi-activity"></i>
             </div>
@@ -31,10 +31,10 @@
                 <div class="stat-number">{{ active_count }}</div>
                 <div class="stat-label">В работе (заключение/исполнение)</div>
             </div>
-        </div>
+        </a>
     </div>
     <div class="col-md-3">
-        <div class="stat-card">
+        <a href="{{ url_for('section_detail', section_key='storage') }}" class="stat-card text-decoration-none">
             <div class="stat-icon bg-warning">
                 <i class="bi bi-archive"></i>
             </div>
@@ -42,10 +42,10 @@
                 <div class="stat-number">{{ in_storage }}</div>
                 <div class="stat-label">Хранение / Архив</div>
             </div>
-        </div>
+        </a>
     </div>
     <div class="col-md-3">
-        <div class="stat-card">
+        <a href="{{ url_for('reports') }}" class="stat-card text-decoration-none">
             <div class="stat-icon bg-info">
                 <i class="bi bi-cash-stack"></i>
             </div>
@@ -53,7 +53,7 @@
                 <div class="stat-number">{{ "%.0f"|format(total_amount // 1000) }} тыс.</div>
                 <div class="stat-label">Общая сумма договоров</div>
             </div>
-        </div>
+        </a>
     </div>
 </div>
 
@@ -66,15 +66,17 @@
             <div class="card-body">
                 {% for key in sections_order %}
                 {% set sec = sections[key] %}
-                <div class="d-flex justify-content-between align-items-center mb-2">
-                    <span class="d-flex align-items-center">
-                        <span class="status-dot" style="background:{{ sec.step_colors[sec.steps[0]] }}"></span>
-                        <small>{{ sec.label }}</small>
-                    </span>
-                    <span class="badge" style="background:{{ sec.step_colors[sec.steps[0]] }}">
-                        {{ section_stats.get(key, 0) }}
-                    </span>
-                </div>
+                <a href="{{ url_for('section_detail', section_key=key) }}" class="text-decoration-none">
+                    <div class="d-flex justify-content-between align-items-center mb-2">
+                        <span class="d-flex align-items-center">
+                            <span class="status-dot" style="background:{{ sec.step_colors[sec.steps[0]] }}"></span>
+                            <small>{{ sec.label }}</small>
+                        </span>
+                        <span class="badge" style="background:{{ sec.step_colors[sec.steps[0]] }}">
+                            {{ section_stats.get(key, 0) }}
+                        </span>
+                    </div>
+                </a>
                 {% endfor %}
             </div>
         </div>
