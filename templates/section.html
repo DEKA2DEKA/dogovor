@@ -37,6 +37,36 @@
 
 <input type="file" id="fileInput" accept=".xlsx,.xls" style="display:none">
 
+<div class="card mb-3">
+    <div class="card-body py-2">
+        <div class="row g-2 align-items-end">
+            <div class="col-md-4">
+                <label class="form-label small mb-0">Поиск</label>
+                <input type="text" class="form-control form-control-sm" id="filterSearch" placeholder="Номер, контрагент, название...">
+            </div>
+            <div class="col-md-2">
+                <label class="form-label small mb-0">Тип</label>
+                <select class="form-select form-select-sm" id="filterType">
+                    <option value="">Все</option>
+                    <option value="main">Основной</option>
+                    <option value="additional">ДС</option>
+                </select>
+            </div>
+            <div class="col-md-2">
+                <label class="form-label small mb-0">Сумма от</label>
+                <input type="number" class="form-control form-control-sm" id="filterAmountMin" placeholder="0">
+            </div>
+            <div class="col-md-2">
+                <label class="form-label small mb-0">Сумма до</label>
+                <input type="number" class="form-control form-control-sm" id="filterAmountMax" placeholder="∞">
+            </div>
+            <div class="col-md-2">
+                <button class="btn btn-sm btn-outline-secondary w-100" onclick="resetFilters()">Сбросить</button>
+            </div>
+        </div>
+    </div>
+</div>
+
 <div class="kanban-board" id="kanbanBoard">
     {% for col_key, col_label, col_color in display_columns %}
     <div class="kanban-column {% if col_key.startswith('__incoming__') %}column-incoming{% elif col_key.startswith('__next__') %}column-next{% endif %}"
@@ -49,7 +79,7 @@
         <div class="column-body" id="column-{{ col_key }}" data-section="{{ section_key }}" data-step="{{ col_key }}">
             {% for contract in board.get(col_key, []) %}
             <div class="card contract-card" draggable="{% if col_key.startswith('__') %}false{% else %}true{% endif %}"
-                 data-id="{{ contract.id }}"
+                 data-id="{{ contract.id }}" data-type="{{ contract.contract_type }}"
                  onclick="showContractDetail({{ contract.id }})">
                 <div class="card-body p-2">
                     <div class="d-flex justify-content-between">
@@ -68,5 +98,53 @@
     </div>
     {% endfor %}
 </div>
+{% endblock %}
 
+{% block scripts %}
+<script>
+function applyFilters() {
+    const search = (document.getElementById('filterSearch')?.value || '').toLowerCase().trim();
+    const type = document.getElementById('filterType')?.value || '';
+    const min = parseFloat(document.getElementById('filterAmountMin')?.value) || 0;
+    const max = parseFloat(document.getElementById('filterAmountMax')?.value) || Infinity;
+
+    document.querySelectorAll('.contract-card').forEach(card => {
+        const text = card.textContent.toLowerCase();
+        const cardType = card.dataset.type || '';
+        const amtEl = card.querySelector('.text-muted.ms-1');
+        const amount = amtEl ? parseFloat(amtEl.textContent.replace(/[^0-9.,]/g, '').replace(',', '.')) || 0 : 0;
+
+        let match = true;
+        if (search && !text.includes(search)) match = false;
+        if (type && cardType !== type) match = false;
+        if (amount < min || amount > max) match = false;
+
+        card.style.display = match ? '' : 'none';
+    });
+
+    document.querySelectorAll('.column-body').forEach(col => {
+        const visible = col.querySelectorAll('.contract-card:not([style*="display: none"])').length;
+        const badge = col.closest('.kanban-column')?.querySelector('.count-badge');
+        if (badge) badge.textContent = visible;
+    });
+}
+
+function resetFilters() {
+    ['filterSearch', 'filterType', 'filterAmountMin', 'filterAmountMax'].forEach(id => {
+        const el = document.getElementById(id);
+        if (el) el.value = '';
+    });
+    applyFilters();
+}
+
+document.addEventListener('DOMContentLoaded', function () {
+    ['filterSearch', 'filterType', 'filterAmountMin', 'filterAmountMax'].forEach(id => {
+        const el = document.getElementById(id);
+        if (el) {
+            el.addEventListener('input', applyFilters);
+            if (el.tagName === 'SELECT') el.addEventListener('change', applyFilters);
+        }
+    });
+});
+</script>
 {% endblock %}
