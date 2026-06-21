@@ -1,3 +1,5 @@
+// Версия программы: 1.0.0 | Версия файла: 1.0.2
+
 let currentContractId = null;
 
 const SECTIONS = {
