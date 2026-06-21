@@ -7,6 +7,7 @@ services:
       - "5000:5000"
     environment:
       - SECRET_KEY=${SECRET_KEY:-dogovor-secret-key}
+      - ENVIRONMENT=production
       - TZ=Europe/Moscow
     volumes:
       - dogovor_data:/app/instance

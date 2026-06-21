@@ -31,9 +31,11 @@
                 </a>
             </div>
             <div class="navbar-nav ms-auto">
+                {% if ENVIRONMENT != 'production' %}
                 <button class="btn btn-outline-danger btn-sm nav-stop-btn" onclick="stopServer()">
                     <i class="bi bi-stop-circle"></i> Остановить сервер
                 </button>
+                {% endif %}
             </div>
         </div>
     </nav>
