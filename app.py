@@ -4,7 +4,7 @@ Flask-приложение для отслеживания жизненного 
 по разделам: Заключение, Исполнение, Изменение, Хранение, Архив.
 
 Версия программы: 1.0.0
-Версия файла: 3.0.0
+Версия файла: 3.0.1
 """
 
 import json
@@ -18,13 +18,14 @@ from werkzeug.utils import secure_filename
 from models import (db, Contract, News, SECTIONS, SECTIONS_ORDER, get_section,
                      get_next_section_key, get_prev_section_key, get_display_columns)
 
-VERSION = "1.0.1"
+VERSION = "1.1.0"
 
 app = Flask(__name__)
 app.config['SECRET_KEY'] = os.environ.get('SECRET_KEY', 'dogovor-secret-key')
 app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///dogovor.db'
 app.config['UPLOAD_FOLDER'] = os.path.join(os.path.dirname(__file__), 'uploads')
 app.config['MAX_CONTENT_LENGTH'] = 50 * 1024 * 1024
+app.config['ENVIRONMENT'] = os.environ.get('ENVIRONMENT', 'development')
 
 os.makedirs(app.config['UPLOAD_FOLDER'], exist_ok=True)
 
@@ -32,7 +33,7 @@ db.init_app(app)
 
 @app.context_processor
 def inject_globals():
-    return dict(VERSION=VERSION)
+    return dict(VERSION=VERSION, ENVIRONMENT=app.config['ENVIRONMENT'])
 
 SAMPLE_DATA_PATH = os.path.join(os.path.dirname(__file__), 'sample_data.json')
 SAVED_REPORTS_PATH = os.path.join(os.path.dirname(__file__), 'saved_reports.json')
@@ -715,6 +716,8 @@ def api_add_additional(contract_id):
 
 @app.route('/api/shutdown', methods=['POST'])
 def api_shutdown():
+    if app.config['ENVIRONMENT'] == 'production':
+        return jsonify({'error': 'Forbidden'}), 403
     threading.Timer(0.5, os._exit, args=[0]).start()
     return jsonify({'message': 'Сервер остановлен'})
 
