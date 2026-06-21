@@ -1,0 +1,16 @@
+services:
+  dogovor:
+    build: .
+    container_name: dogovor
+    ports:
+      - "5000:5000"
+    environment:
+      - SECRET_KEY=${SECRET_KEY:-dogovor-secret-key}
+    volumes:
+      - dogovor_data:/app/instance
+      - dogovor_uploads:/app/uploads
+    restart: unless-stopped
+
+volumes:
+  dogovor_data:
+  dogovor_uploads:
