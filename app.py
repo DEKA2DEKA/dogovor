@@ -18,6 +18,8 @@ from werkzeug.utils import secure_filename
 from models import (db, Contract, News, SECTIONS, SECTIONS_ORDER, get_section,
                      get_next_section_key, get_prev_section_key, get_display_columns)
 
+VERSION = "1.0.0"
+
 app = Flask(__name__)
 app.config['SECRET_KEY'] = os.environ.get('SECRET_KEY', 'dogovor-secret-key')
 app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///dogovor.db'
@@ -27,6 +29,10 @@ app.config['MAX_CONTENT_LENGTH'] = 50 * 1024 * 1024
 os.makedirs(app.config['UPLOAD_FOLDER'], exist_ok=True)
 
 db.init_app(app)
+
+@app.context_processor
+def inject_globals():
+    return dict(VERSION=VERSION)
 
 SAMPLE_DATA_PATH = os.path.join(os.path.dirname(__file__), 'sample_data.json')
 SAVED_REPORTS_PATH = os.path.join(os.path.dirname(__file__), 'saved_reports.json')
