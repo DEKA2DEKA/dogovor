@@ -2,15 +2,18 @@ services:
   dogovor:
     build: .
     container_name: dogovor
+    restart: always
     ports:
       - "5000:5000"
     environment:
       - SECRET_KEY=${SECRET_KEY:-dogovor-secret-key}
+      - TZ=Europe/Moscow
     volumes:
       - dogovor_data:/app/instance
       - dogovor_uploads:/app/uploads
-    restart: unless-stopped
 
 volumes:
   dogovor_data:
+    external: false
   dogovor_uploads:
+    external: false
