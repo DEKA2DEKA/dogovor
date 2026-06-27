@@ -1,0 +1,36 @@
+Договорились. План действий:
+
+1. SSH на VPS — если ещё нет ключа:
+
+# На локальном ПК (PowerShell): генерируем ключ, если нет
+ssh-keygen -t ed25519 -f "$env:USERPROFILE\.ssh\id_ed25519_vps"
+type "$env:USERPROFILE\.ssh\id_ed25519_vps.pub" | ssh root@176.108.251.234 "cat >> .ssh/authorized_keys"
+2. Установить opencode на сервере:
+
+curl -fsSL https://opencode.ai/install | bash
+# или через npm (если есть Node.js):
+npm install -g opencode-ai
+3. Клонировать репозиторий:
+
+git clone https://github.com/DEKA2DEKA/dogovor.git /opt/dogovor
+cd /opt/dogovor
+4. Запустить opencode web с паролем:
+
+OPENCODE_SERVER_PASSWORD=your-password opencode web --port 4096 --hostname 0.0.0.0
+5. systemd-сервис (/etc/systemd/system/opencode-web.service) для автозапуска:
+
+[Unit]
+Description=OpenCode Web
+After=network.target
+
+[Service]
+Type=simple
+WorkingDirectory=/opt/dogovor
+Environment=OPENCODE_SERVER_PASSWORD=your-password
+ExecStart=/usr/local/bin/opencode web --port 4096 --hostname 0.0.0.0
+Restart=always
+User=root
+
+[Install]
+WantedBy=multi-user.target
+Готовы начинать? Если да — шаг 1: нужно убедиться, что у вас есть SSH-доступ к VPS. Можете прямо сейчас проверить:
