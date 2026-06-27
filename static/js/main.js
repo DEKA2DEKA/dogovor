@@ -188,6 +188,12 @@ function renderContractDetail(c) {
                 (открыть основной договор)</a></div>`
         : '';
 
+    const fieldRow = (label, val) =>
+        `<div class="modal-detail-label">${label}</div><div class="modal-detail-value">${val || '—'}</div>`;
+
+    const fieldRow6 = (label, val) =>
+        `<div class="col-6">${fieldRow(label, val)}</div>`;
+
     document.getElementById('modalBody').innerHTML = `
         <div class="row">
             <div class="col-md-7">
@@ -200,31 +206,83 @@ function renderContractDetail(c) {
                             </span>
                         </div>
 
-                        <div class="modal-detail-label">Номер договора</div>
-                        <div class="modal-detail-value">${c.number || '—'}</div>
-
-                        <div class="modal-detail-label">Наименование</div>
-                        <div class="modal-detail-value">${c.name || '—'}</div>
-
-                        <div class="modal-detail-label">Контрагент</div>
-                        <div class="modal-detail-value">${c.counterparty || '—'}</div>
-
-                        <div class="modal-detail-label">Предмет договора</div>
-                        <div class="modal-detail-value">${c.subject || '—'}</div>
+                        ${fieldRow('Номер договора', c.number)}
+                        ${fieldRow('Наименование', c.name)}
+                        ${fieldRow('Контрагент', c.counterparty)}
+                        ${fieldRow('Предмет договора', c.subject)}
 
                         <div class="row">
-                            <div class="col-6">
-                                <div class="modal-detail-label">Сумма</div>
-                                <div class="modal-detail-value">${c.amount ? c.amount.toFixed(2) + ' ₽' : '—'}</div>
-                            </div>
-                            <div class="col-6">
-                                <div class="modal-detail-label">Ответственный</div>
-                                <div class="modal-detail-value">${c.responsible || '—'}</div>
-                            </div>
+                            ${fieldRow6('Сумма', c.amount ? c.amount.toFixed(2) + ' ₽' : '—')}
+                            ${fieldRow6('Ответственный', c.responsible)}
                         </div>
 
-                        <div class="modal-detail-label">Примечания</div>
-                        <div class="modal-detail-value">${c.notes || '—'}</div>
+                        ${c.brief_subject ? fieldRow('Краткая тема', c.brief_subject) : ''}
+                        ${c.service_section ? fieldRow('Раздел услуг', c.service_section) : ''}
+                        ${c.service_subtype ? fieldRow('Объект, вид работ', c.service_subtype) : ''}
+                        ${c.place_conclusion || c.place_service ? `<div class="row">
+                            ${c.place_conclusion ? fieldRow6('Место заключения', c.place_conclusion) : ''}
+                            ${c.place_service ? fieldRow6('Место оказания', c.place_service) : ''}
+                        </div>` : ''}
+
+                        <details class="mt-3"${c.registration_number || c.document_date || c.additional_number || c.additional_date || c.initiator || c.government_id || c.payment_form || c.prolongation || c.renewal_required || c.prolongation_days || c.validity_period ? ' open' : ''}>
+                            <summary class="fw-bold small text-muted">Дополнительные реквизиты</summary>
+                            <div class="mt-2">
+                                ${c.registration_number ? fieldRow('Номер регистрации БРД', c.registration_number) : ''}
+                                ${c.document_date ? fieldRow('Дата документа', c.document_date) : ''}
+                                ${c.additional_number ? fieldRow('Номер ДС', c.additional_number) : ''}
+                                ${c.additional_date ? fieldRow('Дата ДС', c.additional_date) : ''}
+                                ${c.initiator ? fieldRow('Инициатор договора', c.initiator) : ''}
+                                ${c.government_id ? fieldRow('ИГК', c.government_id) : ''}
+                                ${c.payment_form ? fieldRow('Форма расчета', c.payment_form) : ''}
+                                ${c.prolongation ? fieldRow('Пролонгация', c.prolongation) : ''}
+                                ${c.renewal_required ? fieldRow('Продление требуется', c.renewal_required ? 'Да' : 'Нет') : ''}
+                                ${c.prolongation_days ? fieldRow('Срок до пролонгации, дн', c.prolongation_days) : ''}
+                                ${c.validity_period ? fieldRow('Срок действия', c.validity_period) : ''}
+                            </div>
+                        </details>
+
+                        <details class="mt-2"${c.planned_start || c.planned_end || c.actual_start || c.actual_end ? ' open' : ''}>
+                            <summary class="fw-bold small text-muted">Плановые и фактические даты</summary>
+                            <div class="mt-2">
+                                <div class="row">
+                                    ${c.planned_start ? fieldRow6('План. начало', c.planned_start) : ''}
+                                    ${c.planned_end ? fieldRow6('План. окончание', c.planned_end) : ''}
+                                    ${c.actual_start ? fieldRow6('Факт. начало', c.actual_start) : ''}
+                                    ${c.actual_end ? fieldRow6('Факт. окончание', c.actual_end) : ''}
+                                </div>
+                            </div>
+                        </details>
+
+                        <details class="mt-2"${c.monthly_amount || c.amount_no_tax || c.tax_rate || c.amount_with_tax || c.amount_paid || c.amount_remaining ? ' open' : ''}>
+                            <summary class="fw-bold small text-muted">Финансовая информация</summary>
+                            <div class="mt-2">
+                                <div class="row">
+                                    ${c.monthly_amount ? fieldRow6('В мес. без НДС', c.monthly_amount.toFixed(2) + ' ₽') : ''}
+                                    ${c.amount_no_tax ? fieldRow6('Стоимость без налога', c.amount_no_tax.toFixed(2) + ' ₽') : ''}
+                                    ${c.tax_rate ? fieldRow6('Налог, %', c.tax_rate) : ''}
+                                    ${c.amount_with_tax ? fieldRow6('Стоимость с налогом', c.amount_with_tax.toFixed(2) + ' ₽') : ''}
+                                    ${c.amount_paid ? fieldRow6('Оплачено', c.amount_paid.toFixed(2) + ' ₽') : ''}
+                                    ${c.amount_remaining ? fieldRow6('Осталось', c.amount_remaining.toFixed(2) + ' ₽') : ''}
+                                </div>
+                            </div>
+                        </details>
+
+                        <details class="mt-2"${c.original_status || c.date_sent_to_sign || c.date_received_signed || c.outgoing_info || c.signatory || c.signatory_doc || c.counterparty_details || c.electronic_copy || c.termination_date ? ' open' : ''}>
+                            <summary class="fw-bold small text-muted">Статус и документооборот</summary>
+                            <div class="mt-2">
+                                ${c.original_status ? fieldRow('Статус оригинала', c.original_status) : ''}
+                                ${c.date_sent_to_sign ? fieldRow('Отправлен на подпись', c.date_sent_to_sign) : ''}
+                                ${c.date_received_signed ? fieldRow('Получен подписанным', c.date_received_signed) : ''}
+                                ${c.outgoing_info ? fieldRow('Исх. и дата направления', c.outgoing_info) : ''}
+                                ${c.signatory ? fieldRow('Подписант', c.signatory) : ''}
+                                ${c.signatory_doc ? fieldRow('Документ полномочий', c.signatory_doc) : ''}
+                                ${c.counterparty_details ? fieldRow('Реквизиты контрагента', c.counterparty_details) : ''}
+                                ${c.electronic_copy ? fieldRow('Электронная копия', c.electronic_copy) : ''}
+                                ${c.termination_date ? fieldRow('Дата расторжения', c.termination_date) : ''}
+                            </div>
+                        </details>
+
+                        ${fieldRow('Примечания', c.notes)}
 
                         ${childrenHtml ? `<div class="mt-3"><div class="modal-detail-label">Дополнительные соглашения</div>${childrenHtml}</div>` : ''}
                     </div>

@@ -169,6 +169,27 @@ def _create_contract_from_dict(item):
         archive_date=dates['archive_date'],
         destroyed_date=dates['destroyed_date'],
     )
+    new_str_fields = (
+        'registration_number', 'document_date', 'additional_number', 'additional_date',
+        'service_section', 'service_subtype', 'brief_subject', 'place_conclusion',
+        'place_service', 'initiator', 'government_id', 'payment_form', 'original_status',
+        'outgoing_info', 'signatory', 'signatory_doc', 'counterparty_details',
+        'electronic_copy', 'prolongation', 'planned_start', 'planned_end',
+        'actual_start', 'actual_end', 'validity_period',
+        'date_sent_to_sign', 'date_received_signed', 'termination_date',
+    )
+    for f in new_str_fields:
+        if f in item:
+            setattr(contract, f, item[f])
+    new_num_fields = (
+        'prolongation_days', 'monthly_amount', 'amount_no_tax', 'tax_rate',
+        'amount_with_tax', 'amount_paid', 'amount_remaining',
+    )
+    for f in new_num_fields:
+        if f in item:
+            setattr(contract, f, item[f])
+    if 'renewal_required' in item:
+        contract.renewal_required = bool(item['renewal_required'])
     db.session.add(contract)
     return contract
 
@@ -211,6 +232,43 @@ COLUMN_MAP = {
     'дата направления': 'sent_date',
     'дата архивации': 'archive_date',
     'дата уничтожения': 'destroyed_date',
+    'номер регистрации': 'registration_number',
+    'дата документа': 'document_date',
+    'номер дс': 'additional_number',
+    'дата дс': 'additional_date',
+    'раздел услуг': 'service_section',
+    'объект': 'service_subtype',
+    'вид работ': 'service_subtype',
+    'кратко': 'brief_subject',
+    'место заключения': 'place_conclusion',
+    'место оказания': 'place_service',
+    'инициатор': 'initiator',
+    'игк': 'government_id',
+    'форма расчета': 'payment_form',
+    'статус оригинала': 'original_status',
+    'исх': 'outgoing_info',
+    'подписант': 'signatory',
+    'полномочий': 'signatory_doc',
+    'реквизиты': 'counterparty_details',
+    'электронная копия': 'electronic_copy',
+    'пролонгация': 'prolongation',
+    'срок до пролонгации': 'prolongation_days',
+    'продление требуется': 'renewal_required',
+    'дог.начало': 'planned_start',
+    'дог.оконч': 'planned_end',
+    'факт.нач': 'actual_start',
+    'факт.оконч': 'actual_end',
+    'срок действия': 'validity_period',
+    'стоимость в мес': 'monthly_amount',
+    'без ндс': 'monthly_amount',
+    'без налога': 'amount_no_tax',
+    'налог %': 'tax_rate',
+    'с налогом': 'amount_with_tax',
+    'оплачено': 'amount_paid',
+    'осталось': 'amount_remaining',
+    'отправки оригинала': 'date_sent_to_sign',
+    'получения оригинала': 'date_received_signed',
+    'расторжения': 'termination_date',
 }
 
 STATUS_ALIASES = {
@@ -239,19 +297,29 @@ def import_excel(filepath):
                 break
 
     imported = 0
+    numeric_fields = ('amount', 'prolongation_days', 'monthly_amount', 'amount_no_tax',
+                      'tax_rate', 'amount_with_tax', 'amount_paid', 'amount_remaining')
+    date_fields = ('received_date', 'processing_date', 'approval_date',
+                   'revision_date', 'signing_date', 'sent_date',
+                   'archive_date', 'destroyed_date')
+    bool_fields = ('renewal_required',)
+
     for _, row in df.iterrows():
         data = {}
         for excel_col, field in col_map.items():
             val = row[excel_col]
-            if field == 'amount':
+            if field in numeric_fields:
                 data[field] = parse_amount(val)
-            elif field in ('received_date', 'processing_date', 'approval_date',
-                           'revision_date', 'signing_date', 'sent_date',
-                           'archive_date', 'destroyed_date'):
+            elif field in date_fields:
                 data[field] = parse_date(val)
             elif field == 'status' and val and not pd.isna(val):
                 raw = str(val).strip().lower()
                 data[field] = STATUS_ALIASES.get(raw, raw)
+            elif field in bool_fields:
+                if val and not pd.isna(val):
+                    data[field] = str(val).strip().lower() in ('да', 'yes', 'true', '1', '+')
+                else:
+                    data[field] = False
             else:
                 data[field] = str(val).strip() if val and not pd.isna(val) else None
 
@@ -639,6 +707,27 @@ def api_update_contract(contract_id):
                 setattr(contract, date_field, datetime.fromisoformat(data[date_field]))
             except (ValueError, TypeError):
                 pass
+    new_str_fields = (
+        'registration_number', 'document_date', 'additional_number', 'additional_date',
+        'service_section', 'service_subtype', 'brief_subject', 'place_conclusion',
+        'place_service', 'initiator', 'government_id', 'payment_form', 'original_status',
+        'outgoing_info', 'signatory', 'signatory_doc', 'counterparty_details',
+        'electronic_copy', 'prolongation', 'planned_start', 'planned_end',
+        'actual_start', 'actual_end', 'validity_period',
+        'date_sent_to_sign', 'date_received_signed', 'termination_date',
+    )
+    for f in new_str_fields:
+        if f in data:
+            setattr(contract, f, data[f])
+    for num_field in ('prolongation_days', 'monthly_amount', 'amount_no_tax',
+                      'tax_rate', 'amount_with_tax', 'amount_paid', 'amount_remaining'):
+        if num_field in data:
+            try:
+                setattr(contract, num_field, float(data[num_field]) if data[num_field] else None)
+            except (ValueError, TypeError):
+                pass
+    if 'renewal_required' in data:
+        contract.renewal_required = bool(data['renewal_required'])
     db.session.commit()
     return jsonify(contract.to_dict())
 

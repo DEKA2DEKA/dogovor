@@ -250,6 +250,42 @@ class Contract(db.Model):
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
     updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
+    registration_number = db.Column(db.String(100), nullable=True)
+    document_date = db.Column(db.String(20), nullable=True)
+    additional_number = db.Column(db.String(100), nullable=True)
+    additional_date = db.Column(db.String(20), nullable=True)
+    service_section = db.Column(db.String(200), nullable=True)
+    service_subtype = db.Column(db.String(200), nullable=True)
+    brief_subject = db.Column(db.String(500), nullable=True)
+    place_conclusion = db.Column(db.String(200), nullable=True)
+    place_service = db.Column(db.String(200), nullable=True)
+    initiator = db.Column(db.String(300), nullable=True)
+    government_id = db.Column(db.String(100), nullable=True)
+    payment_form = db.Column(db.String(200), nullable=True)
+    original_status = db.Column(db.String(200), nullable=True)
+    outgoing_info = db.Column(db.Text, nullable=True)
+    signatory = db.Column(db.String(300), nullable=True)
+    signatory_doc = db.Column(db.String(300), nullable=True)
+    counterparty_details = db.Column(db.Text, nullable=True)
+    electronic_copy = db.Column(db.String(100), nullable=True)
+    prolongation = db.Column(db.String(200), nullable=True)
+    prolongation_days = db.Column(db.Integer, nullable=True)
+    renewal_required = db.Column(db.Boolean, default=False)
+    planned_start = db.Column(db.String(20), nullable=True)
+    planned_end = db.Column(db.String(20), nullable=True)
+    actual_start = db.Column(db.String(20), nullable=True)
+    actual_end = db.Column(db.String(20), nullable=True)
+    validity_period = db.Column(db.String(200), nullable=True)
+    monthly_amount = db.Column(db.Float, nullable=True)
+    amount_no_tax = db.Column(db.Float, nullable=True)
+    tax_rate = db.Column(db.Float, nullable=True)
+    amount_with_tax = db.Column(db.Float, nullable=True)
+    amount_paid = db.Column(db.Float, nullable=True)
+    amount_remaining = db.Column(db.Float, nullable=True)
+    date_sent_to_sign = db.Column(db.String(20), nullable=True)
+    date_received_signed = db.Column(db.String(20), nullable=True)
+    termination_date = db.Column(db.String(20), nullable=True)
+
     def get_sections_list(self):
         try:
             return json.loads(self.sections) if self.sections else ['conclusion']
@@ -275,7 +311,7 @@ class Contract(db.Model):
         steps = self.get_section_steps_dict()
         children_list = [c.to_dict_brief() for c in self.children.all()]
 
-        return {
+        d = {
             'id': self.id,
             'number': self.number or '',
             'name': self.name or '',
@@ -301,11 +337,24 @@ class Contract(db.Model):
             'archive_date': self.archive_date.isoformat() if self.archive_date else '',
             'destroyed_date': self.destroyed_date.isoformat() if self.destroyed_date else '',
         }
+        for f in ('registration_number', 'document_date', 'additional_number', 'additional_date',
+                  'service_section', 'service_subtype', 'brief_subject', 'place_conclusion',
+                  'place_service', 'initiator', 'government_id', 'payment_form', 'original_status',
+                  'outgoing_info', 'signatory', 'signatory_doc', 'counterparty_details',
+                  'electronic_copy', 'prolongation', 'planned_start', 'planned_end',
+                  'actual_start', 'actual_end', 'validity_period',
+                  'date_sent_to_sign', 'date_received_signed', 'termination_date'):
+            d[f] = getattr(self, f) or ''
+        for f in ('prolongation_days', 'monthly_amount', 'amount_no_tax', 'tax_rate',
+                  'amount_with_tax', 'amount_paid', 'amount_remaining'):
+            d[f] = getattr(self, f) or 0
+        d['renewal_required'] = bool(self.renewal_required)
+        return d
 
     def to_dict_brief(self):
         secs = self.get_sections_list()
         steps = self.get_section_steps_dict()
-        return {
+        d = {
             'id': self.id,
             'number': self.number or '',
             'name': self.name or '',
@@ -316,3 +365,7 @@ class Contract(db.Model):
             'contract_type': self.contract_type or 'main',
             'sort_order': self.sort_order or 0,
         }
+        for f in ('registration_number', 'additional_number', 'service_section',
+                  'initiator', 'original_status', 'brief_subject', 'prolongation'):
+            d[f] = getattr(self, f) or ''
+        return d
