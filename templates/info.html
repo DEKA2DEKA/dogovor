@@ -57,6 +57,40 @@
 </div>
 
 <div class="row g-3 mb-4">
+    <div class="col-12">
+        <div class="card h-100">
+            <div class="card-header d-flex justify-content-between align-items-center">
+                <span><i class="bi bi-building"></i> Карточка организации</span>
+                <button class="btn btn-sm btn-outline-primary" onclick="showOrgCardForm()"><i class="bi bi-pencil"></i> Редактировать</button>
+            </div>
+            <div class="card-body">
+                <div class="row g-3">
+                    <div class="col-md-6">
+                        <table class="table table-sm table-borderless mb-0 org-card-table">
+                            <tr><td class="text-muted">Полное наименование</td><td id="org-full-name"><strong>{{ org_card.full_name }}</strong></td></tr>
+                            <tr><td class="text-muted">Сокращённое</td><td id="org-short-name">{{ org_card.short_name }}</td></tr>
+                            <tr><td class="text-muted">ИНН / КПП</td><td id="org-inn-kpp">{{ org_card.inn }} / {{ org_card.kpp }}</td></tr>
+                            <tr><td class="text-muted">ОГРН</td><td id="org-ogrn">{{ org_card.ogrn }}</td></tr>
+                            <tr><td class="text-muted">Руководитель</td><td id="org-director">{{ org_card.director }}</td></tr>
+                        </table>
+                    </div>
+                    <div class="col-md-6">
+                        <table class="table table-sm table-borderless mb-0 org-card-table">
+                            <tr><td class="text-muted">Юридический адрес</td><td id="org-legal-address">{{ org_card.legal_address }}</td></tr>
+                            <tr><td class="text-muted">Фактический адрес</td><td id="org-actual-address">{{ org_card.actual_address }}</td></tr>
+                            <tr><td class="text-muted">Телефон</td><td id="org-phone">{{ org_card.phone }}</td></tr>
+                            <tr><td class="text-muted">Email</td><td id="org-email">{{ org_card.email }}</td></tr>
+                            <tr><td class="text-muted">Банк</td><td id="org-bank">{{ org_card.bank_name }}</td></tr>
+                            <tr><td class="text-muted">БИК / к/с / р/с</td><td id="org-bank-details">{{ org_card.bik }} / {{ org_card.corr_account }} / {{ org_card.current_account }}</td></tr>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="row g-3 mb-4">
     <div class="col-md-5">
         <div class="card h-100">
             <div class="card-header d-flex justify-content-between align-items-center">
@@ -148,6 +182,81 @@
 {% endblock %}
 
 {% block scripts %}
+<div class="modal fade" id="orgCardModal" tabindex="-1">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">Карточка организации</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <div class="row g-2">
+                    <div class="col-12">
+                        <label class="form-label small">Полное наименование</label>
+                        <input type="text" class="form-control form-control-sm" id="org-full-name-input">
+                    </div>
+                    <div class="col-6">
+                        <label class="form-label small">Сокращённое наименование</label>
+                        <input type="text" class="form-control form-control-sm" id="org-short-name-input">
+                    </div>
+                    <div class="col-6">
+                        <label class="form-label small">Руководитель</label>
+                        <input type="text" class="form-control form-control-sm" id="org-director-input">
+                    </div>
+                    <div class="col-4">
+                        <label class="form-label small">ИНН</label>
+                        <input type="text" class="form-control form-control-sm" id="org-inn-input">
+                    </div>
+                    <div class="col-4">
+                        <label class="form-label small">КПП</label>
+                        <input type="text" class="form-control form-control-sm" id="org-kpp-input">
+                    </div>
+                    <div class="col-4">
+                        <label class="form-label small">ОГРН</label>
+                        <input type="text" class="form-control form-control-sm" id="org-ogrn-input">
+                    </div>
+                    <div class="col-6">
+                        <label class="form-label small">Юридический адрес</label>
+                        <input type="text" class="form-control form-control-sm" id="org-legal-address-input">
+                    </div>
+                    <div class="col-6">
+                        <label class="form-label small">Фактический адрес</label>
+                        <input type="text" class="form-control form-control-sm" id="org-actual-address-input">
+                    </div>
+                    <div class="col-6">
+                        <label class="form-label small">Телефон</label>
+                        <input type="text" class="form-control form-control-sm" id="org-phone-input">
+                    </div>
+                    <div class="col-6">
+                        <label class="form-label small">Email</label>
+                        <input type="text" class="form-control form-control-sm" id="org-email-input">
+                    </div>
+                    <div class="col-12">
+                        <label class="form-label small">Наименование банка</label>
+                        <input type="text" class="form-control form-control-sm" id="org-bank-name-input">
+                    </div>
+                    <div class="col-4">
+                        <label class="form-label small">БИК</label>
+                        <input type="text" class="form-control form-control-sm" id="org-bik-input">
+                    </div>
+                    <div class="col-4">
+                        <label class="form-label small">Корр. счёт</label>
+                        <input type="text" class="form-control form-control-sm" id="org-corr-account-input">
+                    </div>
+                    <div class="col-4">
+                        <label class="form-label small">Расчётный счёт</label>
+                        <input type="text" class="form-control form-control-sm" id="org-current-account-input">
+                    </div>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary btn-sm" data-bs-dismiss="modal">Отмена</button>
+                <button type="button" class="btn btn-primary btn-sm" onclick="saveOrgCard()">Сохранить</button>
+            </div>
+        </div>
+    </div>
+</div>
+
 <div class="modal fade" id="newsModal" tabindex="-1">
     <div class="modal-dialog">
         <div class="modal-content">
@@ -261,6 +370,39 @@ function rgbToHex(color) {
     const rgb = color.match(/\d+/g);
     if (!rgb) return '#6c757d';
     return '#' + rgb.slice(0,3).map(x => parseInt(x).toString(16).padStart(2,'0')).join('');
+}
+
+/* Organization Card */
+function showOrgCardForm() {
+    const fields = ['full-name', 'short-name', 'inn', 'kpp', 'ogrn',
+        'legal-address', 'actual-address', 'phone', 'email',
+        'bank-name', 'bik', 'corr-account', 'current-account', 'director'];
+    fields.forEach(f => {
+        const id = 'org-' + f + '-input';
+        const displayId = 'org-' + f;
+        const el = document.getElementById(displayId);
+        document.getElementById(id).value = el ? el.textContent.trim() : '';
+    });
+    new bootstrap.Modal(document.getElementById('orgCardModal')).show();
+}
+
+function saveOrgCard() {
+    const fields = ['full-name', 'short-name', 'inn', 'kpp', 'ogrn',
+        'legal-address', 'actual-address', 'phone', 'email',
+        'bank-name', 'bik', 'corr-account', 'current-account', 'director'];
+    const data = {};
+    fields.forEach(f => {
+        const key = f.replace(/-/g, '_');
+        data[key] = document.getElementById('org-' + f + '-input').value;
+    });
+    fetch('/api/organization-card', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(data)
+    })
+    .then(r => r.json())
+    .then(() => location.reload())
+    .catch(() => alert('Ошибка сохранения'));
 }
 
 document.querySelectorAll('.stat-number').forEach(el => {

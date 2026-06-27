@@ -453,3 +453,18 @@ a.stat-card:hover {
     border-color: #212529;
     transform: scale(1.15);
 }
+
+.org-card-table td {
+    padding: 2px 8px;
+    vertical-align: top;
+}
+
+.org-card-table td:first-child {
+    width: 160px;
+    white-space: nowrap;
+    font-size: 0.78rem;
+}
+
+.org-card-table td:last-child {
+    font-size: 0.85rem;
+}

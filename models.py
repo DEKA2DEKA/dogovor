@@ -150,6 +150,46 @@ def default_sections():
     return json.dumps(['conclusion'])
 
 
+class OrganizationCard(db.Model):
+    __tablename__ = 'organization_card'
+
+    id = db.Column(db.Integer, primary_key=True)
+    full_name = db.Column(db.String(500), default='')
+    short_name = db.Column(db.String(200), default='')
+    inn = db.Column(db.String(20), default='')
+    kpp = db.Column(db.String(20), default='')
+    ogrn = db.Column(db.String(30), default='')
+    legal_address = db.Column(db.String(500), default='')
+    actual_address = db.Column(db.String(500), default='')
+    phone = db.Column(db.String(100), default='')
+    email = db.Column(db.String(200), default='')
+    bank_name = db.Column(db.String(300), default='')
+    bik = db.Column(db.String(20), default='')
+    corr_account = db.Column(db.String(30), default='')
+    current_account = db.Column(db.String(30), default='')
+    director = db.Column(db.String(200), default='')
+    updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+    def to_dict(self):
+        return {
+            'id': self.id,
+            'full_name': self.full_name or '',
+            'short_name': self.short_name or '',
+            'inn': self.inn or '',
+            'kpp': self.kpp or '',
+            'ogrn': self.ogrn or '',
+            'legal_address': self.legal_address or '',
+            'actual_address': self.actual_address or '',
+            'phone': self.phone or '',
+            'email': self.email or '',
+            'bank_name': self.bank_name or '',
+            'bik': self.bik or '',
+            'corr_account': self.corr_account or '',
+            'current_account': self.current_account or '',
+            'director': self.director or '',
+        }
+
+
 class News(db.Model):
     __tablename__ = 'news'
 
