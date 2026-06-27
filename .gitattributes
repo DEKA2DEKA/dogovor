@@ -1,1 +1,2 @@
-TODO.md merge=ours
+# TODO.md only in develop branch - keep main's version (deleted) on merge
+TODO.md merge=keepMine
