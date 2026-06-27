@@ -15,8 +15,9 @@ from datetime import datetime, timedelta
 from flask import Flask, render_template, request, jsonify
 from sqlalchemy import or_
 from werkzeug.utils import secure_filename
-from models import (db, Contract, News, SECTIONS, SECTIONS_ORDER, get_section,
-                     get_next_section_key, get_prev_section_key, get_display_columns)
+from models import (db, Contract, News, OrganizationCard, SECTIONS, SECTIONS_ORDER,
+                     get_section, get_next_section_key, get_prev_section_key,
+                     get_display_columns)
 
 VERSION = "1.1.1"
 
@@ -356,6 +357,12 @@ def info():
 
     news_items = News.query.filter_by(is_active=True).order_by(News.created_at.desc()).all()
 
+    org_card = OrganizationCard.query.first()
+    if not org_card:
+        org_card = OrganizationCard(full_name='', short_name='')
+        db.session.add(org_card)
+        db.session.commit()
+
     return render_template(
         'info.html',
         total=total,
@@ -366,6 +373,7 @@ def info():
         sections=SECTIONS,
         sections_order=SECTIONS_ORDER,
         news_items=[n.to_dict() for n in news_items],
+        org_card=org_card.to_dict(),
     )
 
 
@@ -720,6 +728,35 @@ def api_shutdown():
         return jsonify({'error': 'Forbidden'}), 403
     threading.Timer(0.5, os._exit, args=[0]).start()
     return jsonify({'message': 'Сервер остановлен'})
+
+
+# --- Organization Card API ---
+
+@app.route('/api/organization-card', methods=['GET'])
+def api_get_organization_card():
+    card = OrganizationCard.query.first()
+    if not card:
+        card = OrganizationCard(full_name='', short_name='')
+        db.session.add(card)
+        db.session.commit()
+    return jsonify(card.to_dict())
+
+
+@app.route('/api/organization-card', methods=['PUT'])
+def api_update_organization_card():
+    card = OrganizationCard.query.first()
+    if not card:
+        card = OrganizationCard()
+        db.session.add(card)
+    data = request.get_json()
+    fields = ('full_name', 'short_name', 'inn', 'kpp', 'ogrn',
+              'legal_address', 'actual_address', 'phone', 'email',
+              'bank_name', 'bik', 'corr_account', 'current_account', 'director')
+    for field in fields:
+        if field in data:
+            setattr(card, field, data[field])
+    db.session.commit()
+    return jsonify(card.to_dict())
 
 
 # --- News API ---
