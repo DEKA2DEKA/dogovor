@@ -11,4 +11,4 @@ RUN mkdir -p instance uploads
 
 EXPOSE 5000
 
-CMD ["python", "app.py"]
+ENTRYPOINT ["/app/docker-entrypoint.sh"]
