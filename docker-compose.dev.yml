@@ -9,3 +9,6 @@ services:
       - SECRET_KEY=${SECRET_KEY:-dogovor-dev-secret-key}
       - ENVIRONMENT=development
       - TZ=Europe/Moscow
+    volumes:
+      - ./alembic.ini:/app/alembic.ini
+      - ./migrations:/app/migrations

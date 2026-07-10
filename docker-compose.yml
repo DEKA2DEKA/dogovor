@@ -12,6 +12,8 @@ services:
     volumes:
       - dogovor_data:/app/instance
       - dogovor_uploads:/app/uploads
+      - ./alembic.ini:/app/alembic.ini
+      - ./migrations:/app/migrations
 
 volumes:
   dogovor_data:
