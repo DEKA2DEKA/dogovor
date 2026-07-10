@@ -48,6 +48,50 @@ python app.py
 
 При первом запуске автоматически создаётся база данных `instance/dogovor.db` и загружаются 16 образцовых договоров + 6 новостей.
 
+## Миграции (Alembic)
+
+При изменении модели данных (`models.py`) нужно создавать миграцию, чтобы существующие данные не потерялись.
+
+### Создать миграцию
+
+```bash
+# 1. Изменить models.py (добавить/удалить/переименовать колонки)
+
+# 2. Сгенерировать миграцию (выполняется в контейнере, файл пишется на хост)
+docker exec dogovor alembic -c /app/alembic.ini revision --autogenerate -m "описание_изменений"
+
+# 3. Закоммитить новый файл из migrations/versions/
+git add migrations/versions/XXXX_описание_изменений.py
+git commit -m "миграция: описание_изменений"
+
+# 4. Перезапустить контейнер — миграция применится автоматически
+docker compose restart
+```
+
+### Применить миграции вручную
+
+```bash
+docker exec dogovor alembic -c /app/alembic.ini upgrade head
+```
+
+### Проверить статус
+
+```bash
+docker exec dogovor alembic -c /app/alembic.ini check
+```
+
+### Если контейнер не запущен
+
+```bash
+docker compose run --rm dogovor alembic -c /app/alembic.ini upgrade head
+```
+
+### Как это работает
+
+- При старте контейнера `docker-entrypoint.sh` выполняет `alembic upgrade head`, затем запускает Flask
+- `alembic.ini` и `migrations/` смонтированы как volumes — новые миграции сразу доступны на хосте
+- Начальная миграция `211eac0ec478_initial_schema.py` создаёт все таблицы (включая 35 полей Contract)
+
 ## Структура проекта
 
 ```
@@ -58,6 +102,11 @@ Dogovor/
 ├── saved_reports.json      # Сохранённые отчёты
 ├── TODO.md                 # План развития
 ├── requirements.txt        # Зависимости
+├── alembic.ini             # Конфигурация миграций
+├── docker-entrypoint.sh    # Стартовый скрипт (alembic + flask)
+├── migrations/
+│   ├── env.py              # Настройка окружения Alembic
+│   └── versions/           # Файлы миграций
 ├── instance/
 │   └── dogovor.db          # SQLite БД (создаётся автоматически)
 ├── static/
@@ -95,3 +144,5 @@ Dogovor/
 | GET/POST/DELETE | `/api/news` | Новости CRUD |
 | GET/POST/DELETE | `/api/reports` | Отчёты CRUD |
 | POST | `/api/shutdown` | Остановить сервер |
+| GET | `/api/organization-card` | Карточка организации |
+| PUT | `/api/organization-card` | Обновить карточку организации |
