@@ -788,16 +788,6 @@ STATUS_REFERENCE = {
                 'color': '#FFB74D',
                 'match': ['ПРИОСТАНОВЛЕНО ОФОРМЛЕНИЕ', 'ОТКАЗ ОТ ОФОРМЛЕНИЯ', 'СУД'],
             },
-            'raboty': {
-                'label': 'РАБОТЫ',
-                'color': '#42A5F5',
-                '_work_track': True,
-                'children': {
-                    'zhdem_vyzov': {'label': 'ЖДЕМ ВЫЗОВ', 'match': ['ЖДЕМ ВЫЗОВ', 'ОЖИДАЕМ ВЫЗОВ']},
-                    'raboty_vyp': {'label': 'РАБОТЫ ВЫПОЛНЯЮТСЯ', 'match': ['ВЫПОЛНЕНИЕ РАБОТ'], 'no_end_date': True},
-                    'raboty_zav': {'label': 'РАБОТЫ ЗАВЕРШЕНЫ', 'match': ['ВЫПОЛНЕНИЕ РАБОТ'], 'has_end_date': True},
-                },
-            },
             'na_podpisanii': {
                 'label': 'НА ПОДПИСАНИИ',
                 'color': '#FFA726',
@@ -908,15 +898,14 @@ def _build_tree():
             legal_groups[path] = []
         legal_groups[path].append(c)
 
-    # Work classification (parallel, for ispolnyaemye contracts)
-    work_groups = {}
+    # Work classification (parallel, for all contracts)
+    work_map = {}
     for c in contracts:
         ws = _classify_work(c)
         if ws:
-            key = ('ispolnyaemye', 'raboty', ws)
-            if key not in work_groups:
-                work_groups[key] = []
-            work_groups[key].append(c)
+            if ws not in work_map:
+                work_map[ws] = []
+            work_map[ws].append(c)
 
     tree = {'id': 'root', 'label': 'Все договоры', 'color': '#37474F',
             'count': total, 'sum': total_sum, 'contract_ids': [c.id for c in contracts], 'children': []}
@@ -940,7 +929,6 @@ def _build_tree():
             info = {} if is_unknown else ref['statuses'].get(sid, {})
             label = info.get('label', 'Прочее')
             color = info.get('color', '#BCAAA4')
-            is_work_track = info.get('_work_track', False)
 
             sub_node = {
                 'id': f'{bid}_{sid}',
@@ -949,28 +937,7 @@ def _build_tree():
                 'count': 0, 'sum': 0, 'children': [],
             }
 
-            if is_work_track:
-                # Parallel work track: count contracts from ALL ispolnyaemye branches
-                children_def = info.get('children', {})
-                for cid, ci in children_def.items():
-                    key = (bid, sid, cid)
-                    matched = work_groups.get(key, [])
-                    if not matched:
-                        continue
-                    leaf = {
-                        'id': f'{bid}_{sid}_{cid}',
-                        'label': ci['label'],
-                        'color': ci.get('color', color),
-                        'count': len(matched),
-                        'sum': sum(c.cost_with_vat or 0 for c in matched),
-                        'children': [],
-                        'contract_ids': [c.id for c in matched],
-                    }
-                    sub_node['children'].append(leaf)
-                    sub_node['count'] += leaf['count']
-                    sub_node['sum'] += leaf['sum']
-
-            elif is_unknown:
+            if is_unknown:
                 unknown_contracts = []
                 for (b, s, ps), clist in legal_groups.items():
                     if b == bid and s is None:
@@ -1052,6 +1019,7 @@ def _build_tree():
                             'children': [],
                             'contract_ids': [c.id for c in work_vyp],
                             '_reference': True,
+                            '_no_connector': True,
                         })
                     if work_zav:
                         sub_node['children'].append({
@@ -1063,6 +1031,7 @@ def _build_tree():
                             'children': [],
                             'contract_ids': [c.id for c in work_zav],
                             '_reference': True,
+                            '_no_connector': True,
                         })
 
             if sub_node['children'] or is_unknown:
@@ -1089,7 +1058,35 @@ def _build_tree():
                 branch_node['contract_ids'].extend(ch.get('contract_ids', []))
             tree['children'].append(branch_node)
 
-    return tree
+    # Build parallel work track (separate from main tree, not counted)
+    work_track = {'id': 'work_track_root', 'label': 'РАБОТЫ', 'color': '#42A5F5',
+                  'count': 0, 'sum': 0, 'contract_ids': [], 'children': []}
+    work_defs = [
+        ('zhdem_vyzov', 'ЖДЕМ ВЫЗОВ', '#90CAF9'),
+        ('raboty_vyp', 'РАБОТЫ ВЫПОЛНЯЮТСЯ', '#64B5F6'),
+        ('raboty_zav', 'РАБОТЫ ЗАВЕРШЕНЫ', '#42A5F5'),
+    ]
+    for wid, wlabel, wcolor in work_defs:
+        matched = work_map.get(wid, [])
+        if not matched:
+            continue
+        leaf = {
+            'id': f'work_track_{wid}',
+            'label': wlabel,
+            'color': wcolor,
+            'count': len(matched),
+            'sum': sum(c.cost_with_vat or 0 for c in matched),
+            'children': [],
+            'contract_ids': [c.id for c in matched],
+        }
+        work_track['children'].append(leaf)
+        work_track['count'] += leaf['count']
+        work_track['sum'] += leaf['sum']
+    work_track['contract_ids'] = []
+    for ch in work_track.get('children', []):
+        work_track['contract_ids'].extend(ch.get('contract_ids', []))
+
+    return {'tree': tree, 'work_track': work_track}
 
 
 @app.route('/api/main-contracts/status-flow')

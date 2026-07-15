@@ -517,23 +517,79 @@ function loadStatusTree() {
     fetch('/api/main-contracts/status-flow')
         .then(r => r.json())
         .then(data => {
-            treeLevels = [];
-            flattenTree(data, 0, treeLevels);
             renderStatusTree(data);
         });
 }
 
-function flattenTree(node, depth, levels) {
-    if (!levels[depth]) levels[depth] = [];
-    levels[depth].push(node);
-    (node.children || []).forEach(ch => flattenTree(ch, depth + 1, levels));
-}
+function renderStatusTree(response) {
+    const tree = response.tree || response;
+    const workTrack = response.work_track;
 
-function renderStatusTree(data) {
     let html = '<div class="mb-2 d-flex gap-2 align-items-center">';
     html += '<input id="treeSearch" class="form-control form-control-sm" placeholder="Поиск статуса..." style="max-width:300px" oninput="filterTree(this.value)">';
     html += '<small class="text-muted">клик по стрелке — раскрыть, клик по карточке — фильтр канбана</small>';
     html += '</div>';
+
+    // Work track section (parallel, above main tree)
+    if (workTrack && workTrack.children && workTrack.children.length > 0) {
+        const wtChildren = workTrack.children;
+        html += '<div class="tree-horizontal-wrap mb-3" style="position:relative;overflow-x:auto;overflow-y:visible;background:#eef3f7">';
+        html += '<div class="tree-horizontal" style="display:flex;flex-direction:row;align-items:stretch;gap:40px;position:relative;padding:12px 0;min-height:60px">';
+        html += '<svg class="tree-svg-2" style="position:absolute;top:0;left:0;width:100%;height:100%;pointer-events:none;z-index:0;overflow:visible"></svg>';
+
+        // Level 0: work track root card
+        html += '<div class="tree-level" data-level="0" style="display:flex;flex-direction:column;justify-content:space-evenly;flex:0 0 auto;min-width:120px;max-width:160px;position:relative;z-index:1">';
+        html += '<div id="wt_root" class="tree-card" data-level="0" data-idx="0" data-ids="' + (workTrack.contract_ids || []).join(',') + '" style="margin:4px 8px;padding:10px 12px;border-radius:8px;background:#fff;border-left:4px solid ' + (workTrack.color || '#42A5F5') + ';box-shadow:0 1px 3px rgba(0,0,0,0.1);cursor:pointer;position:relative;flex-shrink:0;" onclick="filterByTreeIds(this,\'' + workTrack.label.replace(/'/g, "\\'") + '\')">';
+        html += '<div class="tree-card-label" style="font-size:0.82rem;font-weight:700;color:#333;margin-bottom:2px">' + workTrack.label + '</div>';
+        html += '<div style="font-size:1.1rem;font-weight:700;color:#111;line-height:1.2">' + (workTrack.count || 0) + '</div>';
+        html += '</div></div>';
+
+        // Level 1: work track children
+        html += '<div class="tree-level" data-level="1" style="display:flex;flex-direction:row;align-items:center;gap:12px;flex:1;min-width:0;position:relative;z-index:1">';
+        wtChildren.forEach(function (ch, idx) {
+            const sumStr = (ch.sum || 0) ? (ch.sum || 0).toLocaleString('ru-RU') + ' ₽' : '';
+            html += '<div id="wt_ch_' + idx + '" class="tree-card" data-level="1" data-idx="' + idx + '" data-ids="' + (ch.contract_ids || []).join(',') + '" style="margin:4px 8px;padding:10px 12px;border-radius:8px;background:#fff;border-left:4px solid ' + (ch.color || '#64B5F6') + ';box-shadow:0 1px 3px rgba(0,0,0,0.1);cursor:pointer;position:relative;flex-shrink:0;" onclick="filterByTreeIds(this,\'' + ch.label.replace(/'/g, "\\'") + '\')">';
+            html += '<div class="tree-card-label" style="font-size:0.82rem;font-weight:500;color:#333;margin-bottom:2px">' + ch.label + '</div>';
+            html += '<div style="font-size:1.1rem;font-weight:700;color:#111;line-height:1.2">' + (ch.count || 0) + '</div>';
+            if (sumStr) html += '<div style="font-size:0.65rem;color:#6c757d">' + sumStr + '</div>';
+            html += '</div>';
+        });
+        html += '</div></div></div>';
+
+        // Draw connectors for work track
+        requestAnimationFrame(function () {
+            var wtSvg = document.querySelector('.tree-svg-2');
+            if (!wtSvg) return;
+            var wtWrap = wtSvg.closest('.tree-horizontal-wrap');
+            if (!wtWrap) return;
+            var wtRect = wtWrap.getBoundingClientRect();
+            var pEl = document.getElementById('wt_root');
+            if (!pEl) return;
+            var pRect = pEl.getBoundingClientRect();
+            var px = pRect.right - wtRect.left;
+            var py = pRect.top + pRect.height / 2 - wtRect.top;
+            var wLines = [];
+            wtChildren.forEach(function (ch, idx) {
+                var cEl = document.getElementById('wt_ch_' + idx);
+                if (!cEl) return;
+                var cRect = cEl.getBoundingClientRect();
+                var cx = cRect.left - wtRect.left;
+                var cy = cRect.top + cRect.height / 2 - wtRect.top;
+                var midX = (px + cx) / 2;
+                wLines.push('M' + px + ',' + py + ' C' + midX + ',' + py + ' ' + midX + ',' + cy + ' ' + cx + ',' + cy);
+            });
+            var wtWidth = wtWrap.scrollWidth || 800;
+            var wtHeight = wtWrap.scrollHeight || 80;
+            wtSvg.setAttribute('viewBox', '0 0 ' + wtWidth + ' ' + wtHeight);
+            wtSvg.setAttribute('width', wtWidth);
+            wtSvg.setAttribute('height', wtHeight);
+            wtSvg.innerHTML = wLines.map(function (d) { return '<path d="' + d + '" fill="none" stroke="#90CAF9" stroke-width="2" stroke-linecap="round"/>'; }).join('');
+        });
+    }
+
+    // Main status tree
+    treeLevels = [];
+    flattenTree(tree, 0, treeLevels);
 
     html += '<div class="tree-horizontal-wrap" style="position:relative;overflow-x:auto;overflow-y:visible">';
     html += '<div class="tree-horizontal" style="display:flex;flex-direction:row;align-items:stretch;gap:40px;position:relative;padding:20px 0;min-height:400px">';
@@ -550,6 +606,7 @@ function renderStatusTree(data) {
             const sum = n.sum || 0;
             const sumStr = sum ? sum.toLocaleString('ru-RU') + ' ₽' : '';
             const isRef = n._reference;
+            const noConnector = n._no_connector;
             const ids = (n.contract_ids || []).join(',');
             const isRoot = level === 0;
             const cardWidth = isRoot ? '140px' : 'auto';
@@ -557,7 +614,7 @@ function renderStatusTree(data) {
             const expandedByDefault = level <= 1;
             const visible = level <= 2 ? '' : 'display:none;';
 
-            html += '<div id="' + nodeId + '" class="tree-card" data-level="' + level + '" data-idx="' + idx + '" data-ids="' + ids + '" data-expanded="' + expandedByDefault + '" style="'
+            html += '<div id="' + nodeId + '" class="tree-card" data-level="' + level + '" data-idx="' + idx + '" data-ids="' + ids + '" data-expanded="' + expandedByDefault + '" data-no-connector="' + (noConnector ? '1' : '0') + '" style="'
                 + visible
                 + 'margin:4px 8px;'
                 + 'padding:' + (isRoot ? '16px 12px' : '10px 12px') + ';'
@@ -598,6 +655,12 @@ function renderStatusTree(data) {
     requestAnimationFrame(function () { drawTreeConnectors(); });
 }
 
+function flattenTree(node, depth, levels) {
+    if (!levels[depth]) levels[depth] = [];
+    levels[depth].push(node);
+    (node.children || []).forEach(ch => flattenTree(ch, depth + 1, levels));
+}
+
 function drawTreeConnectors() {
     var levels = treeLevels;
     if (!levels) return;
@@ -619,6 +682,7 @@ function drawTreeConnectors() {
             var py = pRect.top + pRect.height / 2 - wrapRect.top;
 
             pNode.children.forEach(function (ch) {
+                if (ch._no_connector) return;
                 var ci = levels[l + 1].indexOf(ch);
                 if (ci < 0) return;
                 var cEl = document.getElementById('tn_' + (l + 1) + '_' + ci);
