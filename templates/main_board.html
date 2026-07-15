@@ -1,0 +1,864 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="container-fluid px-3 py-3">
+    <div class="d-flex justify-content-between align-items-center mb-3">
+        <div>
+            <h4 class="mb-0"><i class="bi bi-file-earmark-text"></i> Основные договоры</h4>
+            <small class="text-muted" id="lastImportLabel">данные не загружены</small>
+        </div>
+        <div>
+            <button class="btn btn-sm btn-outline-primary me-1" onclick="showMainFilters()">
+                <i class="bi bi-funnel"></i> Фильтр
+            </button>
+            <button class="btn btn-sm btn-outline-success me-1" onclick="showMainImport()">
+                <i class="bi bi-upload"></i> Загрузить
+            </button>
+            <button class="btn btn-sm btn-outline-secondary" onclick="location.reload()">
+                <i class="bi bi-arrow-repeat"></i>
+            </button>
+        </div>
+    </div>
+
+    <div id="filterBar" class="d-none mb-3">
+        <div class="card card-body py-2">
+            <div class="row g-2 align-items-center">
+                <div class="col-auto">
+                    <select id="filterRegion" class="form-select form-select-sm" onchange="loadMainContracts()">
+                        <option value="">Все регионы</option>
+                        {% for r in regions %}
+                        <option value="{{ r }}">{{ r }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <div class="col-auto">
+                    <input id="filterSearch" class="form-control form-control-sm" placeholder="Поиск..." style="width:200px" oninput="loadMainContracts()">
+                </div>
+                <div class="col-auto">
+                    <a href="{{ url_for('main_board') }}" class="btn btn-sm btn-outline-secondary">Сбросить</a>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div id="importPanel" class="d-none mb-3">
+        <div class="card card-body py-3">
+            <h6 class="mb-2"><i class="bi bi-upload"></i> Загрузить сводные таблицы</h6>
+            <p class="small text-muted mb-2">Загрузите два файла: Сводная таблица Мурманск и Сводная таблица ДВ (по одному или оба сразу).</p>
+            <div class="row g-2">
+                <div class="col-md-5">
+                    <label class="form-label small">Сводная Мурманск</label>
+                    <input type="file" id="fileMurmansk" class="form-control form-control-sm" accept=".xlsx,.xls">
+                </div>
+                <div class="col-md-5">
+                    <label class="form-label small">Сводная ДВ</label>
+                    <input type="file" id="fileDV" class="form-control form-control-sm" accept=".xlsx,.xls">
+                </div>
+                <div class="col-md-2 d-flex align-items-end">
+                    <button class="btn btn-success btn-sm w-100" onclick="uploadMainFiles()">
+                        <i class="bi bi-cloud-upload"></i> Загрузить
+                    </button>
+                </div>
+            </div>
+            <div id="importProgress" class="d-none mt-2">
+                <div class="progress"><div class="progress-bar progress-bar-striped progress-bar-animated" style="width:100%">Загрузка...</div></div>
+            </div>
+            <div id="importResult" class="mt-2"></div>
+        </div>
+    </div>
+
+    <div class="row mb-2" id="mainStats"></div>
+
+    <div class="row mb-2" id="deadlineAlert"></div>
+
+    <div class="d-flex gap-2 mb-2 flex-wrap">
+        <button class="btn btn-sm btn-outline-secondary" onclick="toggleCtoso()">
+            <i class="bi bi-eye"></i> ЦТОСО
+        </button>
+        <button class="btn btn-sm btn-outline-info" onclick="toggleStatusTree()">
+            <i class="bi bi-diagram-2"></i> Дерево статусов
+        </button>
+    </div>
+
+    <div id="statusTreePanel" class="d-none mb-3">
+        <div class="card">
+            <div class="card-body py-2 px-3" id="statusTreeContent"></div>
+        </div>
+    </div>
+
+    <div class="row flex-nowrap overflow-auto pb-3" style="min-height:500px" id="kanbanMain"></div>
+</div>
+
+<div class="modal fade" id="mainContractModal" tabindex="-1">
+    <div class="modal-dialog modal-xl modal-dialog-scrollable">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="mainModalTitle">Договор</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body" id="mainModalBody">
+                <div class="text-center py-4"><div class="spinner-border text-primary" role="status"></div></div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Закрыть</button>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+const MAIN_STATUSES = {{ statuses | tojson }};
+const STATUS_LABELS = {{ status_labels | tojson }};
+const STATUS_COLORS = {{ status_colors | tojson }};
+
+document.addEventListener('DOMContentLoaded', function () {
+    loadMainStats();
+    loadMainContracts();
+});
+
+let ctosoVisible = false;
+let treeVisible = false;
+
+function fmtDate(val) {
+    if (!val) return '—';
+    const cleaned = val.replace(/[T ].*$/, '');
+    const parts = cleaned.split(/[.\-\/]/);
+    if (parts.length === 3) {
+        const [a, b, c] = parts;
+        if (a.length === 4) return `${c}.${b}.${a}`;
+        return `${a}.${b}.${c}`;
+    }
+    return cleaned;
+}
+
+function loadMainStats() {
+    fetch('/api/main-stats')
+        .then(r => r.json())
+        .then(data => {
+            let html = '<div class="d-flex gap-2 flex-wrap align-items-stretch">';
+            const order = ['executing', 'closed'];
+            order.forEach(key => {
+                const count = data.by_status[key] || 0;
+                html += `<div class="stat-pill" style="border-left:4px solid ${STATUS_COLORS[key] || '#6c757d'}">
+                    <div class="fs-5 fw-bold">${count}</div>
+                    <div class="small text-muted">${STATUS_LABELS[key] || key}</div>
+                    <div class="small text-secondary">+${data.total_items || 0} работ</div>
+                </div>`;
+            });
+            html += `<div class="stat-pill stat-pill-ctoso" onclick="toggleCtoso()" style="cursor:pointer;border-left:4px solid ${STATUS_COLORS['ctoso'] || '#6c757d'}">
+                <div class="fs-5 fw-bold">${data.by_status['ctoso'] || 0}</div>
+                <div class="small text-muted">${STATUS_LABELS['ctoso'] || 'ЦТОСО'}</div>
+                <div class="small ${ctosoVisible ? 'text-primary' : 'text-secondary'}">${ctosoVisible ? '✓ показан' : 'показать'}</div>
+            </div>`;
+            html += `<div class="stat-pill">
+                <div class="fs-5 fw-bold">${data.cost_sum.toLocaleString('ru-RU')} ₽</div>
+                <div class="small text-muted">Всего стоимость</div>
+            </div>`;
+            html += '</div>';
+            document.getElementById('mainStats').innerHTML = html;
+
+            const da = document.getElementById('deadlineAlert');
+            if (data.deadline_warnings > 0) {
+                da.innerHTML = `<div class="alert alert-warning py-2 mb-0 d-flex align-items-center gap-2">
+                    <i class="bi bi-exclamation-triangle fs-5"></i>
+                    <strong>Внимание сроки:</strong> ${data.deadline_warnings} договор${data.deadline_warnings > 1 ? 'ов' : ''} — не заполнена дата окончания работ, срок по договору менее 3 недель или просрочен
+                </div>`;
+            } else {
+                da.innerHTML = '';
+            }
+
+            const li = document.getElementById('lastImportLabel');
+            if (data.last_import) {
+                const d = new Date(data.last_import);
+                const pad = n => String(n).padStart(2, '0');
+                li.textContent = `актуальность данных: ${pad(d.getDate())}.${pad(d.getMonth()+1)}.${d.getFullYear()} ${pad(d.getHours())}:${pad(d.getMinutes())}`;
+            } else {
+                li.textContent = 'данные не загружены';
+            }
+        });
+}
+
+function toggleCtoso() {
+    ctosoVisible = !ctosoVisible;
+    loadMainStats();
+    loadMainContracts();
+}
+
+function loadMainContracts() {
+    const region = document.getElementById('filterRegion').value;
+    const search = document.getElementById('filterSearch').value;
+    const params = new URLSearchParams();
+    params.set('tree', '1');
+    if (region) params.set('region', region);
+    if (search) params.set('search', search);
+
+    fetch('/api/main-contracts?' + params.toString())
+        .then(r => r.json())
+        .then(contracts => {
+            renderKanban(contracts);
+        });
+}
+
+function renderKanban(contracts) {
+    const board = document.getElementById('kanbanMain');
+    let html = '';
+    const visibleStatuses = ctosoVisible ? MAIN_STATUSES : MAIN_STATUSES.filter(s => s !== 'ctoso');
+    visibleStatuses.forEach(sk => {
+        const col = contracts.filter(c => c.status === sk);
+        const label = STATUS_LABELS[sk] || sk;
+        const color = STATUS_COLORS[sk] || '#6c757d';
+        html += `<div class="col-md-4 px-1" style="min-width:320px">
+            <div class="card" style="border-top:3px solid ${color}">
+                <div class="card-header py-2 d-flex justify-content-between align-items-center" style="background:${color}11">
+                    <strong style="color:${color}">${label}</strong>
+                    <span class="badge" style="background:${color}">${col.length}</span>
+                </div>
+                <div class="card-body p-2" style="max-height:70vh;overflow-y:auto">
+                    ${col.length === 0 ? '<p class="text-muted small text-center py-3">Нет записей</p>' : ''}
+                    ${col.map(c => renderContractCard(c)).join('')}
+                </div>
+            </div>
+        </div>`;
+    });
+    board.innerHTML = html;
+
+    document.querySelectorAll('.main-toggle-items').forEach(btn => {
+        btn.addEventListener('click', function(e) {
+            e.stopPropagation();
+            const target = document.getElementById(this.dataset.target);
+            if (target) {
+                target.classList.toggle('d-none');
+                this.querySelector('i').classList.toggle('bi-chevron-down');
+                this.querySelector('i').classList.toggle('bi-chevron-up');
+            }
+        });
+    });
+}
+
+function renderContractCard(c) {
+    const cost = c.cost_with_vat ? c.cost_with_vat.toLocaleString('ru-RU') + ' ₽' : '';
+    const items = c.items || [];
+
+    const dsMap = {};
+    items.forEach(item => {
+        const key = item.contract_number || '—';
+        if (!dsMap[key]) dsMap[key] = { count: 0, cost: 0 };
+        dsMap[key].count++;
+        dsMap[key].cost += parseFloat(item.cost_with_vat) || 0;
+    });
+    const dsEntries = Object.keys(dsMap);
+    const dsHtml = dsEntries.map(ds => {
+        const info = dsMap[ds];
+        return `<div class="main-item-row">
+            <div class="d-flex justify-content-between small">
+                <span class="text-truncate flex-grow-1">${ds}</span>
+                <span class="text-nowrap ms-1">${info.cost ? info.cost.toLocaleString('ru-RU') + ' ₽' : ''}</span>
+            </div>
+            <div class="small text-muted">Пунктов: ${info.count}</div>
+        </div>`;
+    }).join('');
+
+    const itemsHtml = items.map(item => `
+        <div class="main-item-row" onclick="showMainContract(${item.id})" title="${item.object_work || ''}">
+            <div class="d-flex justify-content-between small">
+                <span class="text-truncate flex-grow-1">${item.object_work || '—'}</span>
+                <span class="text-nowrap ms-1">${item.cost_with_vat ? item.cost_with_vat.toLocaleString('ru-RU') + ' ₽' : ''}</span>
+            </div>
+            <div class="small text-muted">Срок: ${fmtDate(item.work_end_date)}</div>
+        </div>
+    `).join('');
+
+    const ps = c.parsed_status && c.parsed_status !== 'не определен' ? c.parsed_status : null;
+    const cp = c.cipher && c.cipher !== 'не определен' ? c.cipher : null;
+    return `<div class="card mb-1 contract-card" style="font-size:0.82rem">
+        <div class="card-body p-2" onclick="showMainContract(${c.id})" style="cursor:pointer">
+            <div class="d-flex justify-content-between align-items-start">
+                <div class="flex-grow-1 min-w-0">
+                    <div class="d-flex flex-wrap align-items-center gap-1">
+                        <strong class="text-truncate flex-grow-1" style="min-width:0" title="${c.customer || ''}">${c.customer || '—'}</strong>
+                        <span class="badge bg-secondary flex-shrink-0" style="font-size:0.65rem">${c.region || ''}</span>
+                    </div>
+                    <div class="text-muted text-truncate">${c.contract_number || '—'}</div>
+                    <div class="d-flex gap-1 mt-1 flex-wrap">
+                        ${ps ? `<span class="badge bg-info" style="font-size:0.63rem">${ps}</span>` : ''}
+                        ${cp ? `<span class="badge bg-warning text-dark" style="font-size:0.63rem">${cp}</span>` : ''}
+                    </div>
+                </div>
+            </div>
+        </div>
+        ${items.length > 0 ? `
+        <div class="px-2 pb-1">
+            <button class="btn btn-sm btn-link p-0 text-decoration-none main-toggle-items" data-target="ds-${c.id}" style="font-size:0.75rem">
+                <i class="bi bi-chevron-down"></i> ДС (${dsEntries.length})
+            </button>
+            <div id="ds-${c.id}" class="d-none mt-1">
+                ${dsHtml}
+            </div>
+            <button class="btn btn-sm btn-link p-0 text-decoration-none main-toggle-items" data-target="items-${c.id}" style="font-size:0.75rem">
+                <i class="bi bi-chevron-down"></i> Работы (${items.length})
+            </button>
+            <div id="items-${c.id}" class="d-none mt-1">
+                ${itemsHtml}
+            </div>
+        </div>
+        ` : ''}
+    </div>`;
+}
+
+function showMainContract(id) {
+    const modal = new bootstrap.Modal(document.getElementById('mainContractModal'));
+    document.getElementById('mainModalTitle').textContent = 'Загрузка...';
+    document.getElementById('mainModalBody').innerHTML = '<div class="text-center py-4"><div class="spinner-border text-primary" role="status"></div></div>';
+    modal.show();
+    fetch('/api/main-contracts?tree=1')
+        .then(r => r.json())
+        .then(all => {
+            let found = null;
+            for (const p of all) {
+                if (p.id === id) { found = p; break; }
+                const item = (p.items || []).find(x => x.id === id);
+                if (item) { found = item; break; }
+            }
+            if (found) renderMainDetail(found, all);
+            else document.getElementById('mainModalBody').innerHTML = '<div class="alert alert-danger">Запись не найдена</div>';
+        });
+}
+
+function renderMainDetail(c, allContracts) {
+    const isParent = !c.parent_id;
+    document.getElementById('mainModalTitle').textContent = isParent ? `Договор ${c.contract_number || 'б/н'}` : `Работа: ${c.object_work || 'б/н'}`;
+    const f = (label, val) => `<div class="modal-detail-label">${label}</div><div class="modal-detail-value">${val ?? '—'}</div>`;
+    const f6 = (label, val) => `<div class="col-6">${f(label, val)}</div>`;
+    const fmt = v => typeof v === 'number' && !Number.isInteger(v) ? v.toFixed(2) : v;
+
+    let body = `<div class="row">
+        <div class="col-md-8">
+            <div class="card mb-2">
+                <div class="card-body py-2">
+                    <div class="d-flex gap-2 mb-2">
+                        <span class="badge" style="background:${STATUS_COLORS[c.status] || '#6c757d'}">${STATUS_LABELS[c.status] || c.status}</span>
+                        <span class="badge bg-secondary">${c.region || ''}</span>
+                    </div>
+                    ${isParent ? f('Заказчик', c.customer) : ''}
+                    ${f('Номер договора/ДС', c.contract_number)}
+                    ${f('Объект, работа', c.object_work)}
+                    ${f('Статус (из примечаний)', c.parsed_status)}
+                    ${f('Шифр договора', c.cipher)}
+                    <details class="mt-2" open>
+                        <summary class="fw-bold small text-muted">Сроки</summary>
+                        <div class="row mt-1">
+                            ${f6('Срок по договору', fmtDate(c.contract_deadline))}
+                            ${f6('Начало работ', fmtDate(c.work_start_date))}
+                            ${f6('Окончание работ', fmtDate(c.work_end_date))}
+                        </div>
+                    </details>
+                    <details class="mt-2">
+                        <summary class="fw-bold small text-muted">Финансы</summary>
+                        <div class="row mt-1">
+                            ${f6('Стоимость без НДС', c.cost_no_vat ? fmt(c.cost_no_vat) + ' ₽' : '—')}
+                            ${f6('Стоимость с НДС', c.cost_with_vat ? fmt(c.cost_with_vat) + ' ₽' : '—')}
+                            ${f6('Аванс план', c.advance_plan ? fmt(c.advance_plan) + ' ₽' : '—')}
+                            ${f6('Аванс факт', c.advance_fact ? fmt(c.advance_fact) + ' ₽' : '—')}
+                            ${f6('Всего ДС', c.balance_ds_total ? fmt(c.balance_ds_total) + ' ₽' : '—')}
+                            ${f6('Остаток ДС', c.ds_remaining ? fmt(c.ds_remaining) + ' ₽' : '—')}
+                        </div>
+                    </details>
+                    <details class="mt-2">
+                        <summary class="fw-bold small text-muted">Трудозатраты</summary>
+                        <div class="row mt-1">
+                            ${f6('Трудоёмкость план', fmt(c.labor_plan))}
+                            ${f6('Трудоёмкость факт', fmt(c.labor_fact))}
+                            ${f6('Выполненный объём', c.completed_volume != null ? (c.completed_volume * 100).toFixed(1) + '%' : '—')}
+                            ${f6('Освоено', c.mastered_percent != null ? (c.mastered_percent * 100).toFixed(1) + '%' : '—')}
+                            ${f6('ЗИП план', c.zip_plan ? fmt(c.zip_plan) : '—')}
+                            ${f6('ЗИП факт', c.zip_fact ? fmt(c.zip_fact) : '—')}
+                            ${f6('Командировки план', c.travel_plan ? fmt(c.travel_plan) : '—')}
+                            ${f6('Командировки факт', c.travel_fact ? fmt(c.travel_fact) : '—')}
+                        </div>
+                    </details>
+                    <details class="mt-2">
+                        <summary class="fw-bold small text-muted">Прочее</summary>
+                        <div class="mt-1">
+                            ${f('ИГК', c.igk)}
+                            ${f('Госконтракт', c.government_contract)}
+                            ${f('Номенклатура 1С', c.nomenclature_1c)}
+                            ${f('Банк', c.bank)}
+                            ${f('Статус счета', c.invoice_status)}
+                            ${f('Счёт', c.invoice)}
+                            ${f('Переписка', c.correspondence)}
+                            ${f('Примечания', c.notes)}
+                        </div>
+                    </details>
+                </div>
+            </div>`;
+
+    if (isParent && c.items && c.items.length > 0) {
+        const dsMap = {};
+        c.items.forEach(item => {
+            const key = item.contract_number || '—';
+            if (!dsMap[key]) dsMap[key] = { count: 0, cost: 0, deadline: '' };
+            dsMap[key].count++;
+            dsMap[key].cost += parseFloat(item.cost_with_vat) || 0;
+            if (!dsMap[key].deadline && item.contract_deadline) dsMap[key].deadline = item.contract_deadline;
+        });
+        const dsEntries = Object.entries(dsMap);
+        body += `<div class="card mb-2">
+            <div class="card-body py-2">
+                <h6 class="small text-muted mb-2">ДС (${dsEntries.length})</h6>
+                <div class="table-responsive">
+                    <table class="table table-sm table-hover small mb-0">
+                        <thead><tr>
+                            <th>№</th>
+                            <th>Номер ДС</th>
+                            <th>Срок</th>
+                            <th>Стоимость с НДС</th>
+                            <th>Пунктов ВИ</th>
+                        </tr></thead>
+                        <tbody>
+                        ${dsEntries.map(([ds, info], i) => `
+                            <tr>
+                                <td>${i + 1}</td>
+                                <td>${ds}</td>
+                                <td>${fmtDate(info.deadline)}</td>
+                                <td>${info.cost ? fmt(info.cost) + ' ₽' : '—'}</td>
+                                <td>${info.count}</td>
+                            </tr>
+                        `).join('')}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>`;
+        body += `<div class="card mb-2">
+            <div class="card-body py-2">
+                <h6 class="small text-muted mb-2">Пункты ВИ (${c.items.length})</h6>
+                <div class="table-responsive">
+                    <table class="table table-sm table-hover small mb-0">
+                        <thead><tr>
+                            <th>Работа</th>
+                            <th>Срок</th>
+                            <th>Окончание</th>
+                            <th>Стоимость</th>
+                            <th>Объём</th>
+                        </tr></thead>
+                        <tbody>
+                        ${c.items.map(item => `
+                            <tr onclick="showMainContract(${item.id})" style="cursor:pointer">
+                                <td>${item.object_work || '—'}</td>
+                                <td>${fmtDate(item.contract_deadline)}</td>
+                                <td>${fmtDate(item.work_end_date)}</td>
+                                <td>${item.cost_with_vat ? fmt(item.cost_with_vat) + ' ₽' : '—'}</td>
+                                <td>${item.completed_volume != null ? (item.completed_volume * 100).toFixed(0) + '%' : '—'}</td>
+                            </tr>
+                        `).join('')}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>`;
+    }
+
+    body += `</div>
+        <div class="col-md-4">
+            <div class="card mb-2">
+                <div class="card-body py-2">
+                    <h6 class="small text-muted mb-2">Смена статуса</h6>
+                    ${MAIN_STATUSES.map(sk => `
+                        <button class="btn btn-sm w-100 mb-1 ${c.status === sk ? 'disabled' : ''}"
+                            style="${c.status === sk ? 'background:' + (STATUS_COLORS[sk] || '#6c757d') + ';color:#fff' : 'border-color:' + (STATUS_COLORS[sk] || '#6c757d') + ';color:' + (STATUS_COLORS[sk] || '#6c757d')}"
+                            onclick="changeMainStatus(${c.id}, '${sk}')">
+                            ${STATUS_LABELS[sk] || sk}
+                        </button>
+                    `).join('')}
+                </div>
+            </div>
+            <div class="card">
+                <div class="card-body py-2">
+                    <h6 class="small text-muted mb-2">Информация</h6>
+                    <div class="small">ID: ${c.id}</div>
+                    <div class="small">Пакет: ${c.import_batch || '—'}</div>
+                    <div class="small">Обновлено: ${c.updated_at || '—'}</div>
+                </div>
+            </div>
+        </div>
+    </div>`;
+
+    document.getElementById('mainModalBody').innerHTML = body;
+}
+
+function changeMainStatus(id, newStatus) {
+    fetch(`/api/main-contract/${id}/status`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ status: newStatus }),
+    })
+    .then(r => r.json())
+    .then(() => {
+        const modal = bootstrap.Modal.getInstance(document.getElementById('mainContractModal'));
+        if (modal) modal.hide();
+        loadMainStats();
+        loadMainContracts();
+    })
+    .catch(err => alert('Ошибка: ' + err.message));
+}
+
+// Tree state: array of levels
+let treeLevels = null;
+
+function toggleStatusTree() {
+    treeVisible = !treeVisible;
+    const panel = document.getElementById('statusTreePanel');
+    panel.classList.toggle('d-none', !treeVisible);
+    if (treeVisible) loadStatusTree();
+}
+
+function loadStatusTree() {
+    fetch('/api/main-contracts/status-flow')
+        .then(r => r.json())
+        .then(data => {
+            treeLevels = [];
+            flattenTree(data, 0, treeLevels);
+            renderStatusTree(data);
+        });
+}
+
+function flattenTree(node, depth, levels) {
+    if (!levels[depth]) levels[depth] = [];
+    levels[depth].push(node);
+    (node.children || []).forEach(ch => flattenTree(ch, depth + 1, levels));
+}
+
+function renderStatusTree(data) {
+    let html = '<div class="mb-2 d-flex gap-2 align-items-center">';
+    html += '<input id="treeSearch" class="form-control form-control-sm" placeholder="Поиск статуса..." style="max-width:300px" oninput="filterTree(this.value)">';
+    html += '<small class="text-muted">клик по стрелке — раскрыть, клик по карточке — фильтр канбана</small>';
+    html += '</div>';
+
+    html += '<div class="tree-horizontal-wrap" style="position:relative;overflow-x:auto;overflow-y:visible">';
+    html += '<div class="tree-horizontal" style="display:flex;flex-direction:row;align-items:stretch;gap:40px;position:relative;padding:20px 0;min-height:400px">';
+    html += '<svg class="tree-svg" style="position:absolute;top:0;left:0;width:100%;height:100%;pointer-events:none;z-index:0;overflow:visible"></svg>';
+
+    treeLevels.forEach((nodes, level) => {
+        html += '<div class="tree-level" data-level="' + level + '" style="display:flex;flex-direction:column;justify-content:space-evenly;flex:1;min-width:160px;max-width:220px;position:relative;z-index:1">';
+
+        nodes.forEach((n, idx) => {
+            const hasChildren = n.children && n.children.length > 0;
+            const weight = level <= 1 ? '700' : '500';
+            const cardColor = n.color || '#6c757d';
+            const count = n.count || 0;
+            const sum = n.sum || 0;
+            const sumStr = sum ? sum.toLocaleString('ru-RU') + ' ₽' : '';
+            const isRef = n._reference;
+            const ids = (n.contract_ids || []).join(',');
+            const isRoot = level === 0;
+            const cardWidth = isRoot ? '140px' : 'auto';
+            const nodeId = 'tn_' + level + '_' + idx;
+            const expandedByDefault = level <= 1;
+            const visible = level <= 2 ? '' : 'display:none;';
+
+            html += '<div id="' + nodeId + '" class="tree-card" data-level="' + level + '" data-idx="' + idx + '" data-ids="' + ids + '" data-expanded="' + expandedByDefault + '" style="'
+                + visible
+                + 'margin:4px 8px;'
+                + 'padding:' + (isRoot ? '16px 12px' : '10px 12px') + ';'
+                + 'border-radius:8px;'
+                + 'background:#fff;'
+                + 'border-left:4px solid ' + cardColor + ';'
+                + 'box-shadow:0 1px 3px rgba(0,0,0,0.1);'
+                + 'cursor:pointer;'
+                + 'transition:transform 0.15s, box-shadow 0.15s;'
+                + 'position:relative;'
+                + 'min-width:' + cardWidth + ';'
+                + (isRef ? 'opacity:0.7;font-size:0.85rem;' : '')
+                + 'flex-shrink:0;"'
+                + ' onclick="filterByTreeIds(this, \'' + n.label.replace(/'/g, "\\'") + '\')"'
+                + ' onmouseenter="this.style.transform=\'translateY(-2px)\';this.style.boxShadow=\'0 4px 12px rgba(0,0,0,0.15)\';"'
+                + ' onmouseleave="this.style.transform=\'\';this.style.boxShadow=\'0 1px 3px rgba(0,0,0,0.1)\';"';
+
+            html += '>';
+
+            if (hasChildren) {
+                const chevronIcon = expandedByDefault ? 'bi-chevron-down' : 'bi-chevron-right';
+                html += '<span class="tree-card-toggle" onclick="event.stopPropagation();toggleTreeNodeH(this)" style="position:absolute;right:4px;top:4px;cursor:pointer;color:#6c757d;font-size:0.7rem;">';
+                html += '<i class="bi ' + chevronIcon + '"></i></span>';
+            }
+
+            html += '<div class="tree-card-label" style="font-size:' + (isRoot ? '0.9rem' : isRef ? '0.72rem' : '0.82rem') + ';font-weight:' + weight + ';color:#333;margin-bottom:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">' + n.label + '</div>';
+            html += '<div style="font-size:' + (isRoot ? '1.5rem' : '1.3rem') + ';font-weight:700;color:#111;line-height:1.2">' + count + '</div>';
+            if (sumStr) html += '<div style="font-size:0.7rem;color:#6c757d">' + sumStr + '</div>';
+            if (isRef) html += '<span style="font-size:0.6rem;color:#999;font-style:italic">справочно</span>';
+            html += '</div>';
+        });
+
+        html += '</div>';
+    });
+
+    html += '</div></div>';
+    document.getElementById('statusTreeContent').innerHTML = html;
+    requestAnimationFrame(function () { drawTreeConnectors(); });
+}
+
+function drawTreeConnectors() {
+    var levels = treeLevels;
+    if (!levels) return;
+    var wrap = document.querySelector('.tree-horizontal-wrap');
+    if (!wrap) return;
+    var svg = wrap.querySelector('.tree-svg');
+    if (!svg) return;
+
+    var wrapRect = wrap.getBoundingClientRect();
+    var lines = [];
+
+    for (var l = 0; l < levels.length - 1; l++) {
+        levels[l].forEach(function (pNode, pi) {
+            if (!pNode || !pNode.children) return;
+            var pEl = document.getElementById('tn_' + l + '_' + pi);
+            if (!pEl || pEl.style.display === 'none') return;
+            var pRect = pEl.getBoundingClientRect();
+            var px = pRect.right - wrapRect.left;
+            var py = pRect.top + pRect.height / 2 - wrapRect.top;
+
+            pNode.children.forEach(function (ch) {
+                var ci = levels[l + 1].indexOf(ch);
+                if (ci < 0) return;
+                var cEl = document.getElementById('tn_' + (l + 1) + '_' + ci);
+                if (!cEl || cEl.style.display === 'none') return;
+                var cRect = cEl.getBoundingClientRect();
+                var cx = cRect.left - wrapRect.left;
+                var cy = cRect.top + cRect.height / 2 - wrapRect.top;
+                var midX = (px + cx) / 2;
+                lines.push('M' + px + ',' + py + ' C' + midX + ',' + py + ' ' + midX + ',' + cy + ' ' + cx + ',' + cy);
+            });
+        });
+    }
+
+    var width = wrap.scrollWidth || 800;
+    var height = wrap.scrollHeight || 600;
+    svg.setAttribute('viewBox', '0 0 ' + width + ' ' + height);
+    svg.setAttribute('width', width);
+    svg.setAttribute('height', height);
+    svg.innerHTML = lines.map(function (d) { return '<path d="' + d + '" fill="none" stroke="#B0BEC5" stroke-width="1.5" stroke-linecap="round"/>'; }).join('');
+}
+
+function toggleTreeNodeH(el) {
+    var card = el.closest('.tree-card');
+    var level = parseInt(card.dataset.level);
+    var idx = parseInt(card.dataset.idx);
+    var icon = el.querySelector('i');
+    var expanded = card.dataset.expanded === 'true';
+    var nextLevel = document.querySelector('.tree-level[data-level="' + (level + 1) + '"]');
+    if (!nextLevel) return;
+
+    var parentNode = treeLevels[level][idx];
+    if (!parentNode || !parentNode.children) return;
+
+    parentNode.children.forEach(function (ch) {
+        var childIdx = treeLevels[level + 1].indexOf(ch);
+        if (childIdx < 0) return;
+        var childCards = nextLevel.querySelectorAll('.tree-card');
+        if (childIdx >= childCards.length) return;
+        var childCard = childCards[childIdx];
+        if (expanded) {
+            childCard.style.display = 'none';
+            collapseDescendants(level + 1, childIdx);
+        } else {
+            childCard.style.display = '';
+        }
+    });
+
+    card.dataset.expanded = expanded ? 'false' : 'true';
+    icon.classList.toggle('bi-chevron-right');
+    icon.classList.toggle('bi-chevron-down');
+
+    requestAnimationFrame(function () { drawTreeConnectors(); });
+}
+
+function collapseDescendants(level, idx) {
+    var parentNode = treeLevels[level][idx];
+    if (!parentNode || !parentNode.children) return;
+    var nextLevel = document.querySelector('.tree-level[data-level="' + (level + 1) + '"]');
+    if (!nextLevel) return;
+
+    parentNode.children.forEach(function (ch) {
+        var childIdx = treeLevels[level + 1].indexOf(ch);
+        if (childIdx < 0) return;
+        var childCards = nextLevel.querySelectorAll('.tree-card');
+        if (childIdx >= childCards.length) return;
+        var childCard = childCards[childIdx];
+        childCard.style.display = 'none';
+        childCard.dataset.expanded = 'false';
+        var chevron = childCard.querySelector('.tree-card-toggle i');
+        if (chevron) {
+            chevron.classList.remove('bi-chevron-down');
+            chevron.classList.add('bi-chevron-right');
+        }
+        collapseDescendants(level + 1, childIdx);
+    });
+}
+
+function filterTree(query) {
+    query = query.toLowerCase().trim();
+    var allCards = document.querySelectorAll('#statusTreeContent .tree-card');
+
+    if (!query) {
+        allCards.forEach(function (c) {
+            var lvl = parseInt(c.dataset.level);
+            c.style.display = lvl <= 2 ? '' : 'none';
+            c.dataset.expanded = lvl <= 1 ? 'true' : 'false';
+            var ch = c.querySelector('.tree-card-toggle i');
+            if (ch) {
+                if (lvl <= 1) { ch.classList.remove('bi-chevron-right'); ch.classList.add('bi-chevron-down'); }
+                else { ch.classList.remove('bi-chevron-down'); ch.classList.add('bi-chevron-right'); }
+            }
+        });
+        requestAnimationFrame(function () { drawTreeConnectors(); });
+        return;
+    }
+
+    var matched = [];
+    allCards.forEach(function (c) {
+        var label = c.querySelector('.tree-card-label');
+        if (label && label.textContent.toLowerCase().includes(query)) matched.push(c);
+    });
+
+    allCards.forEach(function (c) { c.style.display = 'none'; });
+
+    if (matched.length > 0) {
+        matched.forEach(function (c) {
+            var el = c;
+            while (el) {
+                el.style.display = '';
+                el.dataset.expanded = 'true';
+                var ch = el.querySelector('.tree-card-toggle i');
+                if (ch) { ch.classList.remove('bi-chevron-right'); ch.classList.add('bi-chevron-down'); }
+                el = el.parentElement.closest('.tree-card');
+            }
+        });
+    }
+
+    requestAnimationFrame(function () { drawTreeConnectors(); });
+}
+
+function filterByTreeIds(el, label) {
+    const card = el.closest('.tree-card');
+    const ids = (card.dataset.ids || '').split(',').filter(Boolean).map(Number);
+    if (ids.length === 0) return;
+    applyTreeFilter(ids, label);
+}
+
+function applyTreeFilter(ids, label) {
+    const region = document.getElementById('filterRegion').value;
+    const search = document.getElementById('filterSearch').value;
+    const params = new URLSearchParams();
+    params.set('tree', '1');
+    if (region) params.set('region', region);
+    if (search) params.set('search', search);
+
+    fetch('/api/main-contracts?' + params.toString())
+        .then(r => r.json())
+        .then(contracts => {
+            const idSet = new Set(ids);
+            const filtered = contracts.filter(c => idSet.has(c.id));
+            renderKanban(filtered);
+            // Show a filter indicator
+            const stats = document.getElementById('mainStats');
+            let indicator = document.getElementById('treeFilterBadge');
+            if (!indicator) {
+                indicator = document.createElement('div');
+                indicator.id = 'treeFilterBadge';
+                indicator.className = 'mb-2';
+                stats.parentNode.insertBefore(indicator, stats.nextSibling);
+            }
+            indicator.innerHTML = `<div class="alert alert-info py-1 px-2 mb-0 d-flex align-items-center gap-2" style="font-size:0.82rem">
+                <i class="bi bi-funnel"></i> Фильтр дерева статусов: <strong>${label}</strong> (${filtered.length})
+                <button class="btn btn-sm btn-outline-secondary ms-auto py-0" onclick="clearTreeFilter()">Сбросить</button>
+            </div>`;
+        });
+}
+
+function clearTreeFilter() {
+    const badge = document.getElementById('treeFilterBadge');
+    if (badge) badge.remove();
+    loadMainContracts();
+}
+
+function showMainFilters() { document.getElementById('filterBar').classList.toggle('d-none'); }
+function showMainImport() { document.getElementById('importPanel').classList.toggle('d-none'); }
+
+function uploadMainFiles() {
+    const fm = document.getElementById('fileMurmansk').files[0];
+    const fd = document.getElementById('fileDV').files[0];
+    if (!fm && !fd) { alert('Выберите хотя бы один файл'); return; }
+    const formData = new FormData();
+    if (fm) formData.append('file_murmansk', fm);
+    if (fd) formData.append('file_dv', fd);
+    document.getElementById('importProgress').classList.remove('d-none');
+    document.getElementById('importResult').innerHTML = '';
+    fetch('/api/main-validate', { method: 'POST', body: formData })
+        .then(r => r.json())
+        .then(data => {
+            document.getElementById('importProgress').classList.add('d-none');
+            if (data.status === 'validation_errors') {
+                let html = `<div class="alert alert-danger">
+                    <strong>Найдено ${data.total_errors} ошибок в данных.</strong>
+                    <button class="btn btn-sm btn-outline-danger ms-2" onclick="forceMainImport()">Игнорировать и импортировать</button>
+                    <div class="mt-2 small">`;
+                data.errors.forEach(e => { html += `<div>${e.file} / ${e.sheet} / строка ${e.row}: <code>${e.column}</code> = "${e.value}"</div>`; });
+                html += `</div></div>`;
+                document.getElementById('importResult').innerHTML = html;
+                window._lastValidateData = formData;
+            } else {
+                document.getElementById('importResult').innerHTML = `<div class="alert alert-success">
+                    <strong>Валидация пройдена.</strong> Найдено ${data.total_rows} записей.
+                    <button class="btn btn-sm btn-success ms-2" onclick="confirmMainImport()">Импортировать</button>
+                </div>`;
+                window._lastValidateData = formData;
+            }
+        })
+        .catch(err => { document.getElementById('importProgress').classList.add('d-none');
+            document.getElementById('importResult').innerHTML = `<div class="alert alert-danger">Ошибка: ${err.message}</div>`; });
+}
+
+function confirmMainImport() {
+    document.getElementById('importProgress').classList.remove('d-none');
+    fetch('/api/main-import', { method: 'POST', body: window._lastValidateData })
+        .then(r => r.json())
+        .then(data => {
+            document.getElementById('importProgress').classList.add('d-none');
+            if (data.error) {
+                document.getElementById('importResult').innerHTML = `<div class="alert alert-danger">${data.error}</div>`;
+            } else {
+                document.getElementById('importResult').innerHTML = `<div class="alert alert-success">${data.message}</div>`;
+                document.getElementById('importPanel').classList.add('d-none');
+                loadMainStats();
+                loadMainContracts();
+            }
+        })
+        .catch(err => { document.getElementById('importProgress').classList.add('d-none');
+            document.getElementById('importResult').innerHTML = `<div class="alert alert-danger">${err.message}</div>`; });
+}
+
+function forceMainImport() {
+    document.getElementById('importProgress').classList.remove('d-none');
+    fetch('/api/main-import?force=1', { method: 'POST', body: window._lastValidateData })
+        .then(r => r.json())
+        .then(data => {
+            document.getElementById('importProgress').classList.add('d-none');
+            if (data.status === 'validation_errors') {
+                document.getElementById('importResult').innerHTML = `<div class="alert alert-warning">
+                    ${data.message}<br>Нажмите «Игнорировать и импортировать» для принудительного импорта без учёта ошибок.
+                </div>`;
+            } else if (data.error) {
+                document.getElementById('importResult').innerHTML = `<div class="alert alert-danger">${data.error}</div>`;
+            } else {
+                document.getElementById('importResult').innerHTML = `<div class="alert alert-success">${data.message}</div>`;
+                document.getElementById('importPanel').classList.add('d-none');
+                loadMainStats();
+                loadMainContracts();
+            }
+        })
+        .catch(err => { document.getElementById('importProgress').classList.add('d-none');
+            document.getElementById('importResult').innerHTML = `<div class="alert alert-danger">${err.message}</div>`; });
+}
+</script>
+{% endblock %}

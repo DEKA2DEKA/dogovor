@@ -66,6 +66,38 @@
     line-height: 1.3;
 }
 
+.main-item-row {
+    padding: 3px 6px;
+    margin: 2px 0;
+    border-radius: 4px;
+    cursor: pointer;
+    border-left: 2px solid #adb5bd;
+}
+.main-item-row:hover {
+    background: rgba(13,110,253,0.06);
+}
+.main-item-row + .main-item-row {
+    border-top: 1px solid #f0f0f0;
+}
+
+.stat-pill {
+    background: #fff;
+    border-radius: 8px;
+    padding: 8px 16px;
+    min-width: 120px;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.08);
+    transition: box-shadow 0.15s;
+}
+.stat-pill:hover {
+    box-shadow: 0 2px 8px rgba(0,0,0,0.12);
+}
+.stat-pill-ctoso {
+    opacity: 0.7;
+}
+.stat-pill-ctoso:hover {
+    opacity: 1;
+}
+
 .section-card-link {
     text-decoration: none;
     color: inherit;
@@ -452,6 +484,27 @@ a.stat-card:hover {
 .color-swatch.selected {
     border-color: #212529;
     transform: scale(1.15);
+}
+
+.tree-horizontal-wrap {
+    position: relative;
+    border: 1px solid #e0e0e0;
+    border-radius: 8px;
+    background: #F0F4F8;
+    background-image:
+        radial-gradient(circle, #d0d8e0 1px, transparent 1px);
+    background-size: 20px 20px;
+    min-height: 300px;
+    overflow-x: auto;
+}
+.tree-card:hover {
+    z-index: 10;
+}
+.tree-card-toggle {
+    transition: transform 0.2s;
+}
+.tree-card-toggle:hover {
+    transform: scale(1.2);
 }
 
 .org-card-table td {

@@ -369,3 +369,113 @@ class Contract(db.Model):
                   'initiator', 'original_status', 'brief_subject', 'prolongation'):
             d[f] = getattr(self, f) or ''
         return d
+
+
+MAIN_STATUSES = ['executing', 'closed', 'ctoso']
+MAIN_STATUS_LABELS = {'executing': 'Исполняемые', 'closed': 'Закрытые', 'ctoso': 'ЦТОСО'}
+MAIN_STATUS_COLORS = {'executing': '#3CB371', 'closed': '#7F8C8D', 'ctoso': '#F4A261'}
+MAIN_REGIONS = ['Мурманск', 'ДВ', 'ЦТОСО']
+
+
+class MainContract(db.Model):
+    __tablename__ = 'main_contracts'
+
+    id = db.Column(db.Integer, primary_key=True)
+    status = db.Column(db.String(20), default='executing')
+    region = db.Column(db.String(20), default='Мурманск')
+    sequence_number = db.Column(db.String(20), nullable=True)
+    customer = db.Column(db.String(300), nullable=True)
+    contract_number = db.Column(db.String(200), nullable=True)
+    object_work = db.Column(db.String(500), nullable=True)
+    contract_deadline = db.Column(db.String(20), nullable=True)
+    work_start_date = db.Column(db.String(20), nullable=True)
+    work_end_date = db.Column(db.String(20), nullable=True)
+    completed_volume = db.Column(db.Float, nullable=True)
+    labor_plan = db.Column(db.Float, nullable=True)
+    labor_fact = db.Column(db.Float, nullable=True)
+    mastered_percent = db.Column(db.Float, nullable=True)
+    cost_no_vat = db.Column(db.Float, nullable=True)
+    cost_with_vat = db.Column(db.Float, nullable=True)
+    advance_plan = db.Column(db.Float, nullable=True)
+    advance_fact = db.Column(db.Float, nullable=True)
+    zip_plan = db.Column(db.Float, nullable=True)
+    zip_fact = db.Column(db.Float, nullable=True)
+    tzr_plan = db.Column(db.Float, nullable=True)
+    tzr_fact = db.Column(db.Float, nullable=True)
+    travel_plan = db.Column(db.Float, nullable=True)
+    travel_fact = db.Column(db.Float, nullable=True)
+    sub_plan = db.Column(db.Float, nullable=True)
+    sub_fact = db.Column(db.Float, nullable=True)
+    total_protocol = db.Column(db.Float, nullable=True)
+    balance_ds_total = db.Column(db.Float, nullable=True)
+    balance_from_advance = db.Column(db.Float, nullable=True)
+    balance_from_contract = db.Column(db.Float, nullable=True)
+    ds_transferred = db.Column(db.Float, nullable=True)
+    ds_remaining = db.Column(db.Float, nullable=True)
+    correspondence = db.Column(db.Text, nullable=True)
+    notes = db.Column(db.Text, nullable=True)
+    bank = db.Column(db.String(200), nullable=True)
+    invoice_status = db.Column(db.String(200), nullable=True)
+    invoice = db.Column(db.String(200), nullable=True)
+    igk = db.Column(db.String(200), nullable=True)
+    government_contract = db.Column(db.String(200), nullable=True)
+    nomenclature_1c = db.Column(db.String(200), nullable=True)
+    import_batch = db.Column(db.String(50), nullable=True)
+    parent_id = db.Column(db.Integer, db.ForeignKey('main_contracts.id'), nullable=True)
+    updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+    parent = db.relationship('MainContract', remote_side='MainContract.id', backref=db.backref('children', lazy='dynamic'))
+
+    @staticmethod
+    def _parse_notes_meta(notes_val):
+        parsed_status = 'не определен'
+        cipher = 'не определен'
+        if notes_val and isinstance(notes_val, str) and notes_val.strip():
+            s = notes_val.strip()
+            if ',' in s:
+                ps = s.split(',')[0].strip()
+                if ps:
+                    parsed_status = ps
+            else:
+                parsed_status = s
+            if '#' in s:
+                idx = s.rfind('#')
+                tail = s[idx+1:].strip()
+                if tail:
+                    cipher = tail
+        return parsed_status, cipher
+
+    DATE_FIELDS = {'contract_deadline', 'work_start_date', 'work_end_date'}
+
+    @staticmethod
+    def _strip_time(val):
+        if not isinstance(val, str):
+            return val
+        if 'T' in val:
+            val = val.split('T')[0]
+        elif ' ' in val:
+            val = val.split(' ')[0]
+        return val
+
+    def to_dict(self):
+        d = {}
+        for c in self.__table__.columns:
+            val = getattr(self, c.name)
+            if isinstance(val, datetime):
+                val = val.isoformat()
+            if c.name in self.DATE_FIELDS:
+                val = self._strip_time(val)
+            if val is None:
+                val = 0 if isinstance(c.type, (db.Float, db.Integer)) else ''
+            d[c.name] = val
+        d['status_label'] = MAIN_STATUS_LABELS.get(self.status, self.status or '')
+        d['status_color'] = MAIN_STATUS_COLORS.get(self.status, '#6c757d')
+        parsed_status, cipher = self._parse_notes_meta(d.get('notes'))
+        d['parsed_status'] = parsed_status
+        d['cipher'] = cipher
+        return d
+
+    def to_dict_tree(self):
+        d = self.to_dict()
+        d['items'] = [c.to_dict() for c in self.children.order_by(MainContract.id).all()]
+        return d

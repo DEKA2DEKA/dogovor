@@ -8,18 +8,28 @@ Flask-приложение для отслеживания жизненного 
 """
 
 import json
+import io
 import os
 import threading
 import pandas as pd
 from datetime import datetime, timedelta
-from flask import Flask, render_template, request, jsonify
+from flask import Flask, render_template, request, jsonify, send_file
 from sqlalchemy import or_
+from openpyxl import Workbook
 from werkzeug.utils import secure_filename
-from models import (db, Contract, News, OrganizationCard, SECTIONS, SECTIONS_ORDER,
+from models import (db, Contract, News, OrganizationCard, MainContract,
+                     SECTIONS, SECTIONS_ORDER, MAIN_STATUSES, MAIN_STATUS_LABELS,
+                     MAIN_STATUS_COLORS, MAIN_REGIONS,
                      get_section, get_next_section_key, get_prev_section_key,
                      get_display_columns)
+from main_import import import_main_file, merge_and_save
 
-VERSION = "1.1.1"
+VERSION_FILE = os.path.join(os.path.dirname(__file__), 'VERSION')
+try:
+    with open(VERSION_FILE) as f:
+        VERSION = f.read().strip()
+except FileNotFoundError:
+    VERSION = "0.0.0"
 
 app = Flask(__name__)
 app.config['SECRET_KEY'] = os.environ.get('SECRET_KEY', 'dogovor-secret-key')
@@ -558,6 +568,666 @@ def api_import():
     except Exception as e:
         return jsonify({'error': f'Ошибка импорта: {str(e)}'}), 500
 
+
+# --- Main Contracts (основные договоры) ---
+
+MAIN_BATCH = None
+
+def get_main_batch():
+    global MAIN_BATCH
+    if MAIN_BATCH is None:
+        MAIN_BATCH = datetime.now().strftime('%Y%m%d_%H%M%S')
+    return MAIN_BATCH
+
+
+@app.route('/main-board')
+def main_board():
+    return render_template('main_board.html',
+                           statuses=MAIN_STATUSES,
+                           status_labels=MAIN_STATUS_LABELS,
+                           status_colors=MAIN_STATUS_COLORS,
+                           regions=MAIN_REGIONS)
+
+
+@app.route('/api/main-contracts')
+def api_main_contracts():
+    status = request.args.get('status')
+    region = request.args.get('region')
+    search = request.args.get('search', '').strip()
+    tree = request.args.get('tree', '0') == '1'
+    query = MainContract.query
+    if status:
+        query = query.filter(MainContract.status == status)
+    if region:
+        query = query.filter(MainContract.region == region)
+    if search:
+        like = f'%{search}%'
+        query = query.filter(
+            db.or_(
+                MainContract.customer.like(like),
+                MainContract.contract_number.like(like),
+                MainContract.object_work.like(like),
+                MainContract.igk.like(like),
+            )
+        )
+    if tree:
+        parents = query.filter(MainContract.parent_id.is_(None)).order_by(MainContract.id).all()
+        return jsonify([c.to_dict_tree() for c in parents])
+    contracts = query.order_by(MainContract.id).all()
+    return jsonify([c.to_dict() for c in contracts])
+
+
+def _clear_main_data():
+    """Очищает все основные договоры перед импортом."""
+    MainContract.query.delete()
+    db.session.commit()
+
+
+@app.route('/api/main-import', methods=['POST'])
+def api_main_import():
+    if 'file_murmansk' not in request.files and 'file_dv' not in request.files:
+        return jsonify({'error': 'Не загружено ни одного файла'}), 400
+
+    force = request.args.get('force', '0') == '1'
+    batch = get_main_batch()
+    all_rows = []
+    all_errors = []
+    files_loaded = []
+    _clear_main_data()
+
+    for key, region_label in [('file_murmansk', 'Мурманск'), ('file_dv', 'ДВ')]:
+        f = request.files.get(key)
+        if not f or not f.filename:
+            continue
+        ext = os.path.splitext(f.filename)[1].lower()
+        if ext not in ('.xlsx', '.xls'):
+            return jsonify({'error': f'{f.filename}: поддерживаются только .xlsx, .xls'}), 400
+        filename = secure_filename(f'import_main_{key}_{datetime.now().strftime("%Y%m%d_%H%M%S")}{ext}')
+        filepath = os.path.join(app.config['UPLOAD_FOLDER'], filename)
+        f.save(filepath)
+        rows, errors = import_main_file(filepath, region_label, batch, skip_validation=force)
+        all_rows.extend(rows)
+        all_errors.extend(errors)
+        files_loaded.append(f.filename)
+
+    if not all_rows and not all_errors:
+        return jsonify({'error': 'Не удалось прочитать данные из загруженных файлов. Проверьте названия вкладок (Исполняемые, Закрытые, ЦТОСО).'}), 400
+
+    if all_errors:
+        return jsonify({
+            'status': 'validation_errors',
+            'errors': all_errors[:50],
+            'total_errors': len(all_errors),
+            'files_loaded': files_loaded,
+            'rows_found': len(all_rows),
+            'message': f'Найдено {len(all_errors)} ошибок в данных. Исправьте и повторите загрузку.',
+        })
+
+    count = merge_and_save(all_rows, batch)
+    return jsonify({
+        'status': 'success',
+        'message': f'Импортировано {count} записей из файлов: {", ".join(files_loaded)}',
+        'count': count,
+        'files_loaded': files_loaded,
+        'batch': batch,
+    })
+
+
+@app.route('/api/main-validate', methods=['POST'])
+def api_main_validate():
+    if 'file_murmansk' not in request.files and 'file_dv' not in request.files:
+        return jsonify({'error': 'Не загружено ни одного файла'}), 400
+
+    all_errors = []
+    all_preview = []
+    files_loaded = []
+
+    for key, region_label in [('file_murmansk', 'Мурманск'), ('file_dv', 'ДВ')]:
+        f = request.files.get(key)
+        if not f or not f.filename:
+            continue
+        ext = os.path.splitext(f.filename)[1].lower()
+        if ext not in ('.xlsx', '.xls'):
+            return jsonify({'error': f'{f.filename}: поддерживаются только .xlsx, .xls'}), 400
+        filename = secure_filename(f'validate_{key}_{datetime.now().strftime("%Y%m%d_%H%M%S")}{ext}')
+        filepath = os.path.join(app.config['UPLOAD_FOLDER'], filename)
+        f.save(filepath)
+        rows, errors = import_main_file(filepath, region_label, 'validate')
+        all_errors.extend(errors)
+        all_preview.append({
+            'file': f.filename,
+            'region': region_label,
+            'sheets_found': list(set(r['status'] for r in rows)),
+            'rows': len(rows),
+            'sample': [{'customer': r.get('customer', ''), 'contract_number': r.get('contract_number', ''),
+                        'object_work': r.get('object_work', ''), 'region': r.get('region', '')}
+                       for r in rows[:5]],
+        })
+        files_loaded.append(f.filename)
+
+    total_rows = sum(p['rows'] for p in all_preview)
+    return jsonify({
+        'status': 'ok' if not all_errors else 'validation_errors',
+        'errors': all_errors[:50],
+        'total_errors': len(all_errors),
+        'preview': all_preview,
+        'total_rows': total_rows,
+        'files_loaded': files_loaded,
+    })
+
+
+@app.route('/api/main-stats')
+def api_main_stats():
+    parents = MainContract.query.filter(MainContract.parent_id.is_(None))
+    by_status = {}
+    for s in MAIN_STATUSES:
+        by_status[s] = parents.filter(MainContract.status == s).count()
+    by_region = {}
+    for r in MAIN_REGIONS:
+        by_region[r] = parents.filter(MainContract.region == r).count()
+    cost_sum = db.session.query(db.func.sum(MainContract.cost_with_vat)).filter(MainContract.parent_id.is_(None)).scalar() or 0
+    total = parents.count()
+    total_items = MainContract.query.filter(MainContract.parent_id.isnot(None)).count()
+
+    now = datetime.utcnow()
+    deadline_warnings = 0
+    for c in parents.all():
+        we = str(c.work_end_date or '').strip()
+        if we and we not in ('-', ''):
+            continue
+        dl = str(c.contract_deadline or '').strip()
+        if not dl or dl == '-':
+            continue
+        try:
+            d = datetime.strptime(dl.replace('-', '.').replace('/', '.'), '%d.%m.%Y')
+            if d < now or (d - now).days <= 21:
+                deadline_warnings += 1
+        except (ValueError, TypeError):
+            pass
+
+    latest = MainContract.query.order_by(MainContract.updated_at.desc()).first()
+    last_import = latest.updated_at.isoformat() if latest and latest.updated_at else None
+
+    return jsonify({
+        'total': total,
+        'total_items': total_items,
+        'by_status': by_status,
+        'by_region': by_region,
+        'cost_sum': cost_sum,
+        'deadline_warnings': deadline_warnings,
+        'last_import': last_import,
+    })
+
+
+def _match_status(contract, rules):
+    for key, val in rules.items():
+        if key == 'status' and contract.status != val:
+            return False
+        if key == 'parsed_status_in':
+            ps, _ = contract._parse_notes_meta(contract.notes)
+            if ps not in val:
+                return False
+        if key == 'parsed_status_startswith':
+            ps, _ = contract._parse_notes_meta(contract.notes)
+            if not ps.startswith(val):
+                return False
+        if key == 'work_end_date_is_null' and bool(contract.work_end_date) == val:
+            return False
+    return True
+
+
+# Справочник статусов — все значения ПРОПИСНЫЕ для единообразного сравнения
+STATUS_REFERENCE = {
+    'ne_opredelen': {'label': 'НЕ ОПРЕДЕЛЕН', 'color': '#9E9E9E', 'statuses': {}},
+    'ispolnyaemye': {
+        'label': 'ИСПОЛНЯЕМЫЕ',
+        'color': '#FF9800',
+        'statuses': {
+            'priostanovleno': {
+                'label': 'ПРИОСТАНОВЛЕНО',
+                'color': '#FFB74D',
+                'match': ['ПРИОСТАНОВЛЕНО ОФОРМЛЕНИЕ', 'ОТКАЗ ОТ ОФОРМЛЕНИЯ', 'СУД'],
+            },
+            'raboty': {
+                'label': 'РАБОТЫ',
+                'color': '#42A5F5',
+                '_work_track': True,
+                'children': {
+                    'zhdem_vyzov': {'label': 'ЖДЕМ ВЫЗОВ', 'match': ['ЖДЕМ ВЫЗОВ', 'ОЖИДАЕМ ВЫЗОВ']},
+                    'raboty_vyp': {'label': 'РАБОТЫ ВЫПОЛНЯЮТСЯ', 'match': ['ВЫПОЛНЕНИЕ РАБОТ'], 'no_end_date': True},
+                    'raboty_zav': {'label': 'РАБОТЫ ЗАВЕРШЕНЫ', 'match': ['ВЫПОЛНЕНИЕ РАБОТ'], 'has_end_date': True},
+                },
+            },
+            'na_podpisanii': {
+                'label': 'НА ПОДПИСАНИИ',
+                'color': '#FFA726',
+                'match': ['СОГЛАСОВАНИЕ', 'АСКВП', 'У ЗАКАЗЧИКА'],
+            },
+            'zaklyucheny': {
+                'label': 'ЗАКЛЮЧЕНЫ',
+                'color': '#4CAF50',
+                'match': ['АВАНСИРОВАНИЕ', 'ВЫПОЛНЕНИЕ РАБОТ', 'ФИКСИРОВАНИЕ', 'АСП', 'ОК.РАСЧЕТ'],
+            },
+        },
+    },
+    'zakrytye': {
+        'label': 'ЗАКРЫТЫЕ',
+        'color': '#9E9E9E',
+        'statuses': {
+            'arhivirovanie': {
+                'label': 'АРХИВИРОВАНИЕ',
+                'color': '#BDBDBD',
+                'children': {
+                    'zhdem_dok': {'label': 'ЖДЕМ ДОКУМЕНТЫ', 'match': ['АСР.АРХИВ', 'ДРУГОЕ.АРХИВ']},
+                    'podgotovka_dela': {'label': 'ПОДГОТОВКА ДЕЛА.АРХИВ', 'match_prefix': 'ПОДГОТОВКА ДЕЛА'},
+                    'sshit': {'label': 'СШИТЬ.АРХИВ', 'match_prefix': 'СШИТЬ'},
+                },
+            },
+            'hranenie': {
+                'label': 'ХРАНЕНИЕ',
+                'color': '#BDBDBD',
+                'children': {
+                    'hranenie_arh': {'label': 'ХРАНЕНИЕ.АРХИВ', 'match': ['ХРАНЕНИЕ.АРХИВ']},
+                    'unichtozhen': {'label': 'УНИЧТОЖЕН.АРХИВ', 'match': ['УНИЧТОЖЕН.АРХИВ']},
+                },
+            },
+        },
+    },
+    'ctoso': {'label': 'ЦТОСО', 'color': '#F4A261', 'statuses': {}},
+}
+
+
+def _classify_legal(c):
+    """Определяет юридический путь контракта (взаимоисключающий).
+    Возвращает (branch_id, sub_status_id, parsed_status_label) —
+    parsed_status_label в ПРОПИСНЫХ буквах для единообразия.
+    """
+    ps, _ = MainContract._parse_notes_meta(c.notes)
+    ps_upper = ps.upper()
+
+    if c.status == 'ctoso':
+        return ('ctoso', None, None)
+
+    if c.status == 'closed':
+        branch = 'zakrytye'
+        if ps_upper == 'НЕ ОПРЕДЕЛЕН' or not ps:
+            return (branch, None, None)
+        for sid, info in STATUS_REFERENCE[branch]['statuses'].items():
+            if 'children' in info:
+                for cid, ci in info['children'].items():
+                    if 'match' in ci and ps_upper in ci['match']:
+                        return (branch, sid, ps_upper)
+                    if 'match_prefix' in ci and ps_upper.startswith(ci['match_prefix']):
+                        return (branch, sid, ps_upper)
+            elif 'match' in info and ps_upper in info['match']:
+                return (branch, sid, ps_upper)
+            elif 'match_prefix' in info and ps_upper.startswith(info['match_prefix']):
+                return (branch, sid, ps_upper)
+        return (branch, None, ps_upper)
+
+    if c.status == 'executing':
+        for sid in ('priostanovleno', 'na_podpisanii', 'zaklyucheny'):
+            info = STATUS_REFERENCE['ispolnyaemye']['statuses'].get(sid, {})
+            match_list = info.get('match', [])
+            if ps_upper in match_list:
+                return ('ispolnyaemye', sid, ps_upper)
+        return ('ispolnyaemye', None, ps_upper)
+
+    return ('ne_opredelen', None, None)
+
+
+def _classify_work(c):
+    """Определяет статус работ контракта (параллельный трек).
+    Возвращает work_status_id или None.
+    Работы параллельны любому юридическому статусу внутри Исполняемые.
+    """
+    if c.status != 'executing':
+        return None
+    ps, _ = MainContract._parse_notes_meta(c.notes)
+    ps_upper = ps.upper()
+    if ps_upper in ('ЖДЕМ ВЫЗОВ', 'ОЖИДАЕМ ВЫЗОВ'):
+        return 'zhdem_vyzov'
+    if ps_upper == 'ВЫПОЛНЕНИЕ РАБОТ':
+        if not c.work_end_date:
+            return 'raboty_vyp'
+        else:
+            return 'raboty_zav'
+    return None
+
+
+def _build_tree():
+    contracts = MainContract.query.filter(MainContract.parent_id.is_(None)).all()
+    total = len(contracts)
+    total_sum = sum(c.cost_with_vat or 0 for c in contracts)
+
+    # Legal classification (mutually exclusive)
+    legal_groups = {}
+    for c in contracts:
+        path = _classify_legal(c)
+        if path not in legal_groups:
+            legal_groups[path] = []
+        legal_groups[path].append(c)
+
+    # Work classification (parallel, for ispolnyaemye contracts)
+    work_groups = {}
+    for c in contracts:
+        ws = _classify_work(c)
+        if ws:
+            key = ('ispolnyaemye', 'raboty', ws)
+            if key not in work_groups:
+                work_groups[key] = []
+            work_groups[key].append(c)
+
+    tree = {'id': 'root', 'label': 'Все договоры', 'color': '#37474F',
+            'count': total, 'sum': total_sum, 'contract_ids': [c.id for c in contracts], 'children': []}
+
+    branch_order = ['ispolnyaemye', 'zakrytye', 'ctoso', 'ne_opredelen']
+
+    for bid in branch_order:
+        ref = STATUS_REFERENCE.get(bid)
+        if not ref:
+            continue
+
+        branch_node = {
+            'id': bid, 'label': ref['label'], 'color': ref['color'],
+            'count': 0, 'sum': 0, 'children': [],
+        }
+
+        sub_ids = list(ref['statuses'].keys()) + ['_unknown']
+
+        for sid in sub_ids:
+            is_unknown = sid == '_unknown'
+            info = {} if is_unknown else ref['statuses'].get(sid, {})
+            label = info.get('label', 'Прочее')
+            color = info.get('color', '#BCAAA4')
+            is_work_track = info.get('_work_track', False)
+
+            sub_node = {
+                'id': f'{bid}_{sid}',
+                'label': label,
+                'color': color,
+                'count': 0, 'sum': 0, 'children': [],
+            }
+
+            if is_work_track:
+                # Parallel work track: count contracts from ALL ispolnyaemye branches
+                children_def = info.get('children', {})
+                for cid, ci in children_def.items():
+                    key = (bid, sid, cid)
+                    matched = work_groups.get(key, [])
+                    if not matched:
+                        continue
+                    leaf = {
+                        'id': f'{bid}_{sid}_{cid}',
+                        'label': ci['label'],
+                        'color': ci.get('color', color),
+                        'count': len(matched),
+                        'sum': sum(c.cost_with_vat or 0 for c in matched),
+                        'children': [],
+                        'contract_ids': [c.id for c in matched],
+                    }
+                    sub_node['children'].append(leaf)
+                    sub_node['count'] += leaf['count']
+                    sub_node['sum'] += leaf['sum']
+
+            elif is_unknown:
+                unknown_contracts = []
+                for (b, s, ps), clist in legal_groups.items():
+                    if b == bid and s is None:
+                        unknown_contracts.extend(clist)
+                if unknown_contracts:
+                    sub_node['count'] = len(unknown_contracts)
+                    sub_node['sum'] = sum(c.cost_with_vat or 0 for c in unknown_contracts)
+                    sub_node['contract_ids'] = [c.id for c in unknown_contracts]
+
+            else:
+                # Regular legal sub-status with children (3rd level)
+                children_def = info.get('children')
+                if children_def:
+                    for cid, ci in children_def.items():
+                        match_list_upper = [m.upper() for m in ci.get('match', [])]
+                        prefix_upper = ci.get('match_prefix', '').upper()
+                        matched = []
+                        for c in contracts:
+                            if c.status == 'ctoso':
+                                continue
+                            ps, _ = MainContract._parse_notes_meta(c.notes)
+                            ps_upper = ps.upper()
+                            if ps_upper in match_list_upper:
+                                matched.append(c)
+                            elif prefix_upper and ps_upper.startswith(prefix_upper):
+                                matched.append(c)
+                        if not matched:
+                            continue
+                        leaf = {
+                            'id': f'{bid}_{sid}_{cid}',
+                            'label': ci['label'],
+                            'color': ci.get('color', color),
+                            'count': len(matched),
+                            'sum': sum(c.cost_with_vat or 0 for c in matched),
+                            'children': [],
+                            'contract_ids': [c.id for c in matched],
+                        }
+                        sub_node['children'].append(leaf)
+                else:
+                    # Auto-group by normalized (uppercase) parsed_status
+                    leaf_keys = [k for k in legal_groups if k[0] == bid and k[1] == sid]
+                    ps_groups = {}
+                    for k in leaf_keys:
+                        raw = k[2] or ''
+                        ps_norm = raw.upper()
+                        if ps_norm not in ps_groups:
+                            ps_groups[ps_norm] = []
+                        ps_groups[ps_norm].extend(legal_groups[k])
+                    for ps_norm in sorted(ps_groups):
+                        matched = ps_groups[ps_norm]
+                        # Use first non-empty display label
+                        display = next((k[2] for k in leaf_keys if k[2] and k[2].upper() == ps_norm), ps_norm)
+                        leaf = {
+                            'id': f'{bid}_{sid}_{display[:20].replace(" ", "_")}',
+                            'label': display,
+                            'color': color,
+                            'count': len(matched),
+                            'sum': sum(c.cost_with_vat or 0 for c in matched),
+                            'children': [],
+                            'contract_ids': [c.id for c in matched],
+                        }
+                        sub_node['children'].append(leaf)
+
+                # Work refs for legal sub-statuses (show work_end_date breakdown)
+                legal_contracts = []
+                for (b, s, ps), clist in legal_groups.items():
+                    if b == bid and s == sid:
+                        legal_contracts.extend(clist)
+                if legal_contracts:
+                    work_vyp = [c for c in legal_contracts if not c.work_end_date]
+                    work_zav = [c for c in legal_contracts if c.work_end_date]
+                    if work_vyp:
+                        sub_node['children'].append({
+                            'id': f'{bid}_{sid}_work_vyp',
+                            'label': 'РАБОТЫ ВЫПОЛНЯЮТСЯ',
+                            'color': '#90CAF9',
+                            'count': len(work_vyp),
+                            'sum': sum(c.cost_with_vat or 0 for c in work_vyp),
+                            'children': [],
+                            'contract_ids': [c.id for c in work_vyp],
+                            '_reference': True,
+                        })
+                    if work_zav:
+                        sub_node['children'].append({
+                            'id': f'{bid}_{sid}_work_zav',
+                            'label': 'РАБОТЫ ЗАВЕРШЕНЫ',
+                            'color': '#66BB6A',
+                            'count': len(work_zav),
+                            'sum': sum(c.cost_with_vat or 0 for c in work_zav),
+                            'children': [],
+                            'contract_ids': [c.id for c in work_zav],
+                            '_reference': True,
+                        })
+
+            if sub_node['children'] or is_unknown:
+                real_count = 0
+                real_sum = 0
+                for ch in sub_node.get('children', []):
+                    if not ch.get('_reference'):
+                        real_count += ch['count']
+                        real_sum += ch['sum']
+                if is_unknown and sub_node.get('count', 0) > 0:
+                    real_count, real_sum = sub_node['count'], sub_node['sum']
+                sub_node['count'] = real_count
+                sub_node['sum'] = real_sum
+                sub_node['contract_ids'] = []
+                for ch in sub_node.get('children', []):
+                    sub_node['contract_ids'].extend(ch.get('contract_ids', []))
+                branch_node['children'].append(sub_node)
+                branch_node['count'] += sub_node['count']
+                branch_node['sum'] += sub_node['sum']
+
+        if branch_node['children'] or bid in ('ctoso', 'ne_opredelen'):
+            branch_node['contract_ids'] = []
+            for ch in branch_node['children']:
+                branch_node['contract_ids'].extend(ch.get('contract_ids', []))
+            tree['children'].append(branch_node)
+
+    return tree
+
+
+@app.route('/api/main-contracts/status-flow')
+def api_main_status_flow():
+    return jsonify(_build_tree())
+
+
+
+
+
+MAIN_RUSSIAN_EXPORT = [
+    ('region', 'Регион'),
+    ('status_label', 'Статус'),
+    ('sequence_number', 'Номер п/п'),
+    ('customer', 'Заказчик'),
+    ('contract_number', 'Номер договора_ДС'),
+    ('object_work', 'Объект, работа'),
+    ('contract_deadline', 'Срок по договору'),
+    ('work_start_date', 'Дата начала работ'),
+    ('work_end_date', 'Дата окончания работ'),
+    ('completed_volume', 'Выполненный объем'),
+    ('labor_plan', 'Трудоемкость план'),
+    ('labor_fact', 'Трудоемкость факт'),
+    ('mastered_percent', 'Освоено процентов'),
+    ('cost_no_vat', 'Стоимость без НДС'),
+    ('cost_with_vat', 'Стоимость с НДС'),
+    ('advance_plan', 'Аванс по договору'),
+    ('advance_fact', 'Аванс факт'),
+    ('zip_plan', 'Затраты ЗИП план'),
+    ('zip_fact', 'Затраты ЗИП факт'),
+    ('tzr_plan', 'ТЗР план'),
+    ('tzr_fact', 'ТЗР факт'),
+    ('travel_plan', 'Командировки план'),
+    ('travel_fact', 'Командировки факт'),
+    ('sub_plan', 'Затраты на суб план'),
+    ('sub_fact', 'Затраты на суб факт'),
+    ('total_protocol', 'Итого протокол'),
+    ('balance_ds_total', 'Баланс ДС всего'),
+    ('balance_from_advance', 'Баланс от аванса'),
+    ('balance_from_contract', 'Баланс от договора'),
+    ('ds_transferred', 'ДС переведено'),
+    ('ds_remaining', 'Остаток ДС'),
+    ('correspondence', 'Переписка'),
+    ('notes', 'Примечания'),
+    ('bank', 'Банк'),
+    ('invoice_status', 'Статус счета'),
+    ('invoice', 'Счет'),
+    ('igk', 'ИГК'),
+    ('government_contract', 'Госконтракт'),
+    ('nomenclature_1c', 'Номенклатура 1С'),
+    ('parsed_status', 'Статус (из прим.)'),
+    ('cipher', 'Шифр договора'),
+    ('parent_id', 'ID родителя'),
+    ('import_batch', 'Пакет импорта'),
+]
+
+
+@app.route('/api/main-contracts/export-excel')
+def api_export_main_excel():
+    status = request.args.get('status', '')
+    region = request.args.get('region', '')
+    search = request.args.get('search', '')
+
+    query = MainContract.query
+    if status:
+        query = query.filter(MainContract.status == status)
+    if region:
+        query = query.filter(MainContract.region == region)
+    if search:
+        like = f'%{search}%'
+        query = query.filter(db.or_(
+            MainContract.customer.ilike(like),
+            MainContract.contract_number.ilike(like),
+            MainContract.object_work.ilike(like),
+        ))
+
+    records = query.order_by(MainContract.region, MainContract.customer, MainContract.id).all()
+    dicts = [r.to_dict() for r in records]
+
+    wb = Workbook()
+    ws = wb.active
+    ws.title = 'Реестр'
+    ws.append([label for _, label in MAIN_RUSSIAN_EXPORT])
+
+    for d in dicts:
+        row = []
+        for key, _ in MAIN_RUSSIAN_EXPORT:
+            val = d.get(key)
+            if val is None:
+                val = ''
+            if isinstance(val, float):
+                val = round(val, 2)
+            row.append(val)
+        ws.append(row)
+
+    for col in ws.columns:
+        max_len = 0
+        col_letter = col[0].column_letter
+        for cell in col:
+            try:
+                max_len = max(max_len, len(str(cell.value or '')))
+            except Exception:
+                pass
+        ws.column_dimensions[col_letter].width = min(max_len + 3, 40)
+
+    buf = io.BytesIO()
+    wb.save(buf)
+    buf.seek(0)
+    ts = datetime.now().strftime('%Y%m%d_%H%M%S')
+    return send_file(buf, mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+                     as_attachment=True, download_name=f'osnovnye_dogovory_{ts}.xlsx')
+
+
+@app.route('/api/main-contract/<int:contract_id>', methods=['DELETE'])
+def api_delete_main_contract(contract_id):
+    c = db.session.get(MainContract, contract_id)
+    if not c:
+        return jsonify({'error': 'Запись не найдена'}), 404
+    db.session.delete(c)
+    db.session.commit()
+    return jsonify({'message': 'Удалено'})
+
+
+@app.route('/api/main-contract/<int:contract_id>/status', methods=['PUT'])
+def api_update_main_status(contract_id):
+    c = db.session.get(MainContract, contract_id)
+    if not c:
+        return jsonify({'error': 'Запись не найдена'}), 404
+    data = request.get_json()
+    new_status = data.get('status')
+    if new_status not in MAIN_STATUSES:
+        return jsonify({'error': 'Некорректный статус'}), 400
+    c.status = new_status
+    db.session.commit()
+    return jsonify(c.to_dict())
+
+
+# --- End Main Contracts ---
 
 @app.route('/api/contract/<int:contract_id>/move', methods=['POST'])
 def api_move_contract(contract_id):

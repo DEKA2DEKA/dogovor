@@ -4,95 +4,171 @@
 {% block content %}
 <div class="d-flex justify-content-between align-items-center mb-3">
     <h4 class="mb-0"><i class="bi bi-bar-chart"></i> Отчёты по договорам</h4>
-    <button class="btn btn-outline-primary btn-sm" onclick="showSaveReportModal()">
-        <i class="bi bi-save"></i> Сохранить текущий фильтр
-    </button>
 </div>
 
-<div class="row g-2 mb-4" id="savedReports">
-    {% for report in saved_reports %}
-    <div class="col-md-4 col-lg-2">
-        <div class="report-preset" style="border-color: {{ report.color }}" onclick="applyReport('{{ report.id }}')">
-            <div class="report-preset-icon" style="color: {{ report.color }}">
-                <i class="bi {{ report.icon }}"></i>
-            </div>
-            <div class="report-preset-title">{{ report.title }}</div>
-            <div class="report-preset-desc">{{ report.description }}</div>
-        </div>
-    </div>
-    {% endfor %}
-</div>
+<ul class="nav nav-tabs mb-3" id="reportTabs">
+    <li class="nav-item">
+        <a class="nav-link active" id="tab-contracts" href="#" onclick="switchReportTab('contracts')">Хоздоговоры</a>
+    </li>
+    <li class="nav-item">
+        <a class="nav-link" id="tab-main" href="#" onclick="switchReportTab('main')">Основные договоры</a>
+    </li>
+</ul>
 
-<div class="card mb-3">
-    <div class="card-body">
-        <div class="row g-2 align-items-end">
-            <div class="col-md-3">
-                <label class="form-label small">Поиск</label>
-                <input type="text" class="form-control form-control-sm" id="reportSearch" placeholder="Номер, контрагент...">
-            </div>
-            <div class="col-md-2">
-                <label class="form-label small">Раздел</label>
-                <select class="form-select form-select-sm" id="reportSection">
-                    <option value="">Все</option>
-                    {% for key in sections_order %}
-                    <option value="{{ key }}">{{ sections[key].label }}</option>
-                    {% endfor %}
-                </select>
-            </div>
-            <div class="col-md-2">
-                <label class="form-label small">Сумма от</label>
-                <input type="number" class="form-control form-control-sm" id="reportAmountMin" placeholder="0">
-            </div>
-            <div class="col-md-2">
-                <label class="form-label small">Сумма до</label>
-                <input type="number" class="form-control form-control-sm" id="reportAmountMax" placeholder="∞">
-            </div>
-            <div class="col-md-2">
-                <label class="form-label small">Дата получения с</label>
-                <input type="date" class="form-control form-control-sm" id="reportDateFrom">
-            </div>
-            <div class="col-md-1">
-                <label class="form-label small">&nbsp;</label>
-                <button class="btn btn-sm btn-outline-secondary w-100" onclick="resetReportFilters()">Сброс</button>
+<div id="reportTab-contracts">
+    <div class="row g-2 mb-4" id="savedReports">
+        {% for report in saved_reports %}
+        <div class="col-md-4 col-lg-2">
+            <div class="report-preset" style="border-color: {{ report.color }}" onclick="applyReport('{{ report.id }}')">
+                <div class="report-preset-icon" style="color: {{ report.color }}">
+                    <i class="bi {{ report.icon }}"></i>
+                </div>
+                <div class="report-preset-title">{{ report.title }}</div>
+                <div class="report-preset-desc">{{ report.description }}</div>
             </div>
         </div>
+        {% endfor %}
+    </div>
+
+    <div class="card mb-3">
+        <div class="card-body">
+            <div class="row g-2 align-items-end">
+                <div class="col-md-3">
+                    <label class="form-label small">Поиск</label>
+                    <input type="text" class="form-control form-control-sm" id="reportSearch" placeholder="Номер, контрагент...">
+                </div>
+                <div class="col-md-2">
+                    <label class="form-label small">Раздел</label>
+                    <select class="form-select form-select-sm" id="reportSection">
+                        <option value="">Все</option>
+                        {% for key in sections_order %}
+                        <option value="{{ key }}">{{ sections[key].label }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <div class="col-md-2">
+                    <label class="form-label small">Сумма от</label>
+                    <input type="number" class="form-control form-control-sm" id="reportAmountMin" placeholder="0">
+                </div>
+                <div class="col-md-2">
+                    <label class="form-label small">Сумма до</label>
+                    <input type="number" class="form-control form-control-sm" id="reportAmountMax" placeholder="∞">
+                </div>
+                <div class="col-md-2">
+                    <label class="form-label small">Дата получения с</label>
+                    <input type="date" class="form-control form-control-sm" id="reportDateFrom">
+                </div>
+                <div class="col-md-1">
+                    <label class="form-label small">&nbsp;</label>
+                    <button class="btn btn-sm btn-outline-secondary w-100" onclick="resetReportFilters()">Сброс</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="d-flex justify-content-between align-items-center mb-2">
+        <span class="text-muted small" id="reportCount">Загрузка...</span>
+        <div>
+            <button class="btn btn-sm btn-outline-success" onclick="exportReportCSV()">
+                <i class="bi bi-download"></i> CSV
+            </button>
+        </div>
+    </div>
+
+    <div class="table-responsive">
+        <table class="table table-hover table-sm align-middle" id="reportTable">
+            <thead class="table-dark">
+                <tr>
+                    <th>№</th>
+                    <th>Номер договора</th>
+                    <th>Контрагент</th>
+                    <th>Предмет</th>
+                    <th>Сумма</th>
+                    <th>Статус</th>
+                    <th>Ответственный</th>
+                    <th>Дата получения</th>
+                    <th></th>
+                </tr>
+            </thead>
+            <tbody>
+                <tr><td colspan="9" class="text-center text-muted py-4">Примените фильтры для загрузки данных</td></tr>
+            </tbody>
+        </table>
     </div>
 </div>
 
-<div class="d-flex justify-content-between align-items-center mb-2">
-    <span class="text-muted small" id="reportCount">Загрузка...</span>
-    <div>
-        <button class="btn btn-sm btn-outline-success" onclick="exportReportCSV()">
-            <i class="bi bi-download"></i> CSV
-        </button>
+<div id="reportTab-main" class="d-none">
+    <div class="card mb-3">
+        <div class="card-body">
+            <div class="row g-2 align-items-end">
+                <div class="col-md-3">
+                    <label class="form-label small">Поиск</label>
+                    <input type="text" class="form-control form-control-sm" id="mainSearch" placeholder="Заказчик, номер договора...">
+                </div>
+                <div class="col-md-2">
+                    <label class="form-label small">Статус</label>
+                    <select class="form-select form-select-sm" id="mainStatus">
+                        <option value="">Все</option>
+                        <option value="executing">Исполняемые</option>
+                        <option value="closed">Закрытые</option>
+                        <option value="ctoso">ЦТОСО</option>
+                    </select>
+                </div>
+                <div class="col-md-2">
+                    <label class="form-label small">Регион</label>
+                    <select class="form-select form-select-sm" id="mainRegion">
+                        <option value="">Все</option>
+                        <option value="Мурманск">Мурманск</option>
+                        <option value="ДВ">ДВ</option>
+                        <option value="ЦТОСО">ЦТОСО</option>
+                    </select>
+                </div>
+                <div class="col-md-3">
+                    <label class="form-label small">&nbsp;</label>
+                    <div>
+                        <button class="btn btn-sm btn-outline-success" onclick="exportMainExcel()">
+                            <i class="bi bi-file-earmark-excel"></i> Скачать Excel (Реестр)
+                        </button>
+                    </div>
+                </div>
+                <div class="col-md-2">
+                    <label class="form-label small">&nbsp;</label>
+                    <button class="btn btn-sm btn-outline-secondary w-100" onclick="resetMainFilters()">Сброс</button>
+                </div>
+            </div>
+        </div>
     </div>
-</div>
 
-<div class="table-responsive">
-    <table class="table table-hover table-sm align-middle" id="reportTable">
-        <thead class="table-dark">
-            <tr>
-                <th>№</th>
-                <th>Номер договора</th>
-                <th>Контрагент</th>
-                <th>Предмет</th>
-                <th>Сумма</th>
-                <th>Статус</th>
-                <th>Ответственный</th>
-                <th>Дата получения</th>
-                <th></th>
-            </tr>
-        </thead>
-        <tbody>
-            <tr><td colspan="9" class="text-center text-muted py-4">Примените фильтры для загрузки данных</td></tr>
-        </tbody>
-    </table>
+    <div class="d-flex justify-content-between align-items-center mb-2">
+        <span class="text-muted small" id="mainCount">Загрузка...</span>
+    </div>
+
+    <div class="table-responsive">
+        <table class="table table-hover table-sm align-middle" id="mainReportTable">
+            <thead class="table-dark">
+                <tr>
+                    <th>№</th>
+                    <th>Заказчик</th>
+                    <th>Номер договора</th>
+                    <th>Объект, работа</th>
+                    <th>Стоимость с НДС</th>
+                    <th>Срок по договору</th>
+                    <th>Статус</th>
+                    <th>Регион</th>
+                </tr>
+            </thead>
+            <tbody>
+                <tr><td colspan="8" class="text-center text-muted py-4">Настройте фильтры и скачайте Excel</td></tr>
+            </tbody>
+        </table>
+    </div>
 </div>
 {% endblock %}
 
 {% block scripts %}
 <script>
 let reportContracts = [];
+let mainContracts = [];
 
 document.addEventListener('DOMContentLoaded', function () {
     document.querySelectorAll('#reportSearch, #reportSection, #reportAmountMin, #reportAmountMax, #reportDateFrom, #reportDateTo').forEach(el => {
@@ -101,8 +177,76 @@ document.addEventListener('DOMContentLoaded', function () {
             if (el.tagName === 'SELECT') el.addEventListener('change', loadReportData);
         }
     });
+    document.querySelectorAll('#mainSearch, #mainStatus, #mainRegion').forEach(el => {
+        if (el) {
+            el.addEventListener('input', loadMainReport);
+            if (el.tagName === 'SELECT') el.addEventListener('change', loadMainReport);
+        }
+    });
     loadReportData();
+    loadMainReport();
 });
+
+function switchReportTab(tab) {
+    document.querySelectorAll('#reportTabs .nav-link').forEach(l => l.classList.remove('active'));
+    document.getElementById('tab-' + tab).classList.add('active');
+    document.querySelectorAll('[id^="reportTab-"]').forEach(d => d.classList.add('d-none'));
+    document.getElementById('reportTab-' + tab).classList.remove('d-none');
+}
+
+function loadMainReport() {
+    const search = document.getElementById('mainSearch').value;
+    const status = document.getElementById('mainStatus').value;
+    const region = document.getElementById('mainRegion').value;
+    const params = new URLSearchParams();
+    if (search) params.set('search', search);
+    if (status) params.set('status', status);
+    if (region) params.set('region', region);
+
+    params.set('tree', '1');
+    fetch(`/api/main-contracts?${params.toString()}`)
+        .then(r => r.json())
+        .then(data => {
+            mainContracts = data;
+            document.getElementById('mainCount').textContent = `Найдено: ${data.length} договоров`;
+            const tbody = document.querySelector('#mainReportTable tbody');
+            if (data.length === 0) {
+                tbody.innerHTML = '<tr><td colspan="8" class="text-center text-muted py-4">Договоры не найдены</td></tr>';
+                return;
+            }
+            tbody.innerHTML = data.map((c, i) => {
+                const itemsCount = (c.items || []).length;
+                return `<tr>
+                    <td>${i + 1}</td>
+                    <td>${c.customer || '—'}</td>
+                    <td>${c.contract_number || '—'}</td>
+                    <td>${c.object_work || '—'}${itemsCount ? ` <span class="badge bg-secondary">+${itemsCount}</span>` : ''}</td>
+                    <td>${c.cost_with_vat ? Number(c.cost_with_vat).toLocaleString('ru-RU') + ' ₽' : '—'}</td>
+                    <td>${c.contract_deadline || '—'}</td>
+                    <td><span class="badge" style="background:${c.status_color || '#6c757d'}">${c.status_label || c.status || ''}</span></td>
+                    <td>${c.region || '—'}</td>
+                </tr>`;
+            }).join('');
+        });
+}
+
+function resetMainFilters() {
+    document.getElementById('mainSearch').value = '';
+    document.getElementById('mainStatus').value = '';
+    document.getElementById('mainRegion').value = '';
+    loadMainReport();
+}
+
+function exportMainExcel() {
+    const search = document.getElementById('mainSearch').value;
+    const status = document.getElementById('mainStatus').value;
+    const region = document.getElementById('mainRegion').value;
+    const params = new URLSearchParams();
+    if (search) params.set('search', search);
+    if (status) params.set('status', status);
+    if (region) params.set('region', region);
+    window.location.href = `/api/main-contracts/export-excel?${params.toString()}`;
+}
 
 function loadReportData() {
     const params = new URLSearchParams();
