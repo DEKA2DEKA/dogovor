@@ -612,7 +612,7 @@ function renderStatusTree(response) {
             const cardWidth = isRoot ? '140px' : 'auto';
             const nodeId = 'tn_' + level + '_' + idx;
             const expandedByDefault = level <= 1;
-            const visible = level <= 2 ? '' : 'display:none;';
+            const visible = level <= 1 ? '' : 'display:none;';
 
             html += '<div id="' + nodeId + '" class="tree-card" data-level="' + level + '" data-idx="' + idx + '" data-ids="' + ids + '" data-expanded="' + expandedByDefault + '" data-no-connector="' + (noConnector ? '1' : '0') + '" style="'
                 + visible
@@ -716,12 +716,30 @@ function toggleTreeNodeH(el) {
     var parentNode = treeLevels[level][idx];
     if (!parentNode || !parentNode.children) return;
 
+    // Auto-collapse sibling branches when expanding
+    if (!expanded && level >= 1) {
+        for (var pi = 0; pi < treeLevels[level - 1].length; pi++) {
+            var pNode = treeLevels[level - 1][pi];
+            if (!pNode || !pNode.children) continue;
+            var selfIdx = pNode.children.indexOf(treeLevels[level][idx]);
+            if (selfIdx < 0) continue;
+            pNode.children.forEach(function (sib, si) {
+                if (si === selfIdx) return;
+                var sibLevelIdx = treeLevels[level].indexOf(sib);
+                if (sibLevelIdx < 0) return;
+                var sibCard = document.getElementById('tn_' + level + '_' + sibLevelIdx);
+                if (!sibCard) return;
+                collapseNodeSubtree(level, sibLevelIdx);
+            });
+            break;
+        }
+    }
+
     parentNode.children.forEach(function (ch) {
         var childIdx = treeLevels[level + 1].indexOf(ch);
         if (childIdx < 0) return;
-        var childCards = nextLevel.querySelectorAll('.tree-card');
-        if (childIdx >= childCards.length) return;
-        var childCard = childCards[childIdx];
+        var childCard = document.getElementById('tn_' + (level + 1) + '_' + childIdx);
+        if (!childCard) return;
         if (expanded) {
             childCard.style.display = 'none';
             collapseDescendants(level + 1, childIdx);
@@ -737,6 +755,29 @@ function toggleTreeNodeH(el) {
     requestAnimationFrame(function () { drawTreeConnectors(); });
 }
 
+function collapseNodeSubtree(level, idx) {
+    var card = document.getElementById('tn_' + level + '_' + idx);
+    if (!card) return;
+    card.dataset.expanded = 'false';
+    var chevron = card.querySelector('.tree-card-toggle i');
+    if (chevron) {
+        chevron.classList.remove('bi-chevron-down');
+        chevron.classList.add('bi-chevron-right');
+    }
+    var node = treeLevels[level][idx];
+    if (!node || !node.children) return;
+    var nextLevel = document.querySelector('.tree-level[data-level="' + (level + 1) + '"]');
+    if (!nextLevel) return;
+    node.children.forEach(function (ch) {
+        var childIdx = treeLevels[level + 1].indexOf(ch);
+        if (childIdx < 0) return;
+        var childCard = document.getElementById('tn_' + (level + 1) + '_' + childIdx);
+        if (!childCard) return;
+        childCard.style.display = 'none';
+        collapseDescendants(level + 1, childIdx);
+    });
+}
+
 function collapseDescendants(level, idx) {
     var parentNode = treeLevels[level][idx];
     if (!parentNode || !parentNode.children) return;
@@ -746,9 +787,8 @@ function collapseDescendants(level, idx) {
     parentNode.children.forEach(function (ch) {
         var childIdx = treeLevels[level + 1].indexOf(ch);
         if (childIdx < 0) return;
-        var childCards = nextLevel.querySelectorAll('.tree-card');
-        if (childIdx >= childCards.length) return;
-        var childCard = childCards[childIdx];
+        var childCard = document.getElementById('tn_' + (level + 1) + '_' + childIdx);
+        if (!childCard) return;
         childCard.style.display = 'none';
         childCard.dataset.expanded = 'false';
         var chevron = childCard.querySelector('.tree-card-toggle i');
@@ -767,7 +807,7 @@ function filterTree(query) {
     if (!query) {
         allCards.forEach(function (c) {
             var lvl = parseInt(c.dataset.level);
-            c.style.display = lvl <= 2 ? '' : 'none';
+            c.style.display = lvl <= 1 ? '' : 'none';
             c.dataset.expanded = lvl <= 1 ? 'true' : 'false';
             var ch = c.querySelector('.tree-card-toggle i');
             if (ch) {
