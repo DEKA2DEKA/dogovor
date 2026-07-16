@@ -860,18 +860,27 @@ def _classify_legal(c):
             info = STATUS_REFERENCE['ispolnyaemye']['statuses'].get(sid, {})
             match_list = info.get('match', [])
             if ps_upper in match_list:
-                # ВЫПОЛНЕНИЕ РАБОТ требует погашенного аванса
-                if ps_upper == 'ВЫПОЛНЕНИЕ РАБОТ':
-                    ap = c.advance_plan or 0
-                    af = c.advance_fact or 0
-                    advance_short = ap - af
-                    # Допуск округления 50 руб — если разница в пределах допуска, считаем оплаченным
-                    if ap > 0 and advance_short > 50:
+                # ВЫПОЛНЕНИЕ РАБОТ / АВАНСИРОВАНИЕ — проверка аванса
+                if ps_upper in ('ВЫПОЛНЕНИЕ РАБОТ', 'АВАНСИРОВАНИЕ'):
+                    ap = round(c.advance_plan or 0, 2)
+                    af = round(c.advance_fact or 0, 2)
+                    advance_short = round(ap - af, 2)
+                    # Допуск округления 50 руб
+                    is_advance_paid = not (ap > 0 and advance_short > 50)
+
+                    if ps_upper == 'ВЫПОЛНЕНИЕ РАБОТ' and not is_advance_paid:
                         # Есть долг по авансу — показываем в АВАНСИРОВАНИЕ
                         return ('ispolnyaemye', 'zaklyucheny', 'АВАНСИРОВАНИЕ')
-                    # Аванс оплачен (или в пределах допуска)
-                    if c.work_end_date:
-                        # Работы завершены — сразу в ФИКСИРОВАНИЕ
+
+                    if ps_upper == 'АВАНСИРОВАНИЕ' and is_advance_paid:
+                        # Аванс оплачен (или в пределах допуска) — пересчитываем
+                        if c.work_end_date:
+                            return ('ispolnyaemye', 'zaklyucheny', 'ФИКСИРОВАНИЕ')
+                        else:
+                            return ('ispolnyaemye', 'zaklyucheny', 'ВЫПОЛНЕНИЕ РАБОТ')
+
+                    # ВЫПОЛНЕНИЕ РАБОТ с оплаченным авансом
+                    if ps_upper == 'ВЫПОЛНЕНИЕ РАБОТ' and is_advance_paid and c.work_end_date:
                         return ('ispolnyaemye', 'zaklyucheny', 'ФИКСИРОВАНИЕ')
                 return ('ispolnyaemye', sid, ps_upper)
         return ('ispolnyaemye', None, ps_upper)
@@ -904,11 +913,15 @@ def _build_tree():
 
     # Legal classification (mutually exclusive)
     legal_groups = {}
+    mismatch_contracts = {}
     for c in contracts:
         path = _classify_legal(c)
         if path not in legal_groups:
             legal_groups[path] = []
         legal_groups[path].append(c)
+        ps, _ = MainContract._parse_notes_meta(c.notes)
+        if ps.upper() != (path[2] or '').upper() and path[2] is not None:
+            mismatch_contracts[c.id] = True
 
     # Work classification (parallel, for all contracts)
     work_map = {}
@@ -993,6 +1006,8 @@ def _build_tree():
                             'contract_ids': [c.id for c in matched],
                             'work_vyp': wv,
                             'work_zav': wz,
+                            'mismatch_count': sum(1 for c in matched if c.id in mismatch_contracts),
+                            'mismatch_ids': [c.id for c in matched if c.id in mismatch_contracts],
                         }
                         sub_node['children'].append(leaf)
                 else:
@@ -1040,6 +1055,8 @@ def _build_tree():
                             'contract_ids': [c.id for c in matched],
                             'work_vyp': wv,
                             'work_zav': wz,
+                            'mismatch_count': sum(1 for c in matched if c.id in mismatch_contracts),
+                            'mismatch_ids': [c.id for c in matched if c.id in mismatch_contracts],
                         }
                         sub_node['children'].append(leaf)
                     if unmatched:
@@ -1054,6 +1071,8 @@ def _build_tree():
                             'contract_ids': [c.id for c in unmatched],
                             'work_vyp': wv,
                             'work_zav': wz,
+                            'mismatch_count': sum(1 for c in unmatched if c.id in mismatch_contracts),
+                            'mismatch_ids': [c.id for c in unmatched if c.id in mismatch_contracts],
                         })
 
             if is_unknown or True:

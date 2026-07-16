@@ -285,6 +285,7 @@ function renderContractCard(c) {
                         ${ps ? `<span class="badge bg-info" style="font-size:0.63rem">${ps}</span>` : ''}
                         ${cp ? `<span class="badge bg-warning text-dark" style="font-size:0.63rem">${cp}</span>` : ''}
                         ${advanceDiff ? `<span class="badge bg-warning-subtle text-warning border border-warning" style="font-size:0.6rem" title="Суммы аванса план (${c.advance_plan || 0} ₽) и факт (${c.advance_fact || 0} ₽) не совпадают"><i class="bi bi-exclamation-triangle"></i> Аванс</span>` : ''}
+                        ${c.mismatch ? `<span class="badge bg-warning-subtle text-warning border border-warning" style="font-size:0.6rem" title="Статус в примечаниях (${c.parsed_status || '—'}) не совпадает с расчётным"><i class="bi bi-exclamation-triangle"></i> Статус</span>` : ''}
                     </div>
                 </div>
             </div>
@@ -612,6 +613,7 @@ function renderStatusTree(response) {
             const isRef = n._reference;
             const noConnector = n._no_connector;
             const ids = (n.contract_ids || []).join(',');
+            const mismatchIds = (n.mismatch_ids || []).join(',');
             const isRoot = level === 0;
             const cardWidth = isRoot ? '140px' : 'auto';
             const nodeId = 'tn_' + level + '_' + idx;
@@ -619,7 +621,7 @@ function renderStatusTree(response) {
             const visible = level <= 1 ? '' : 'display:none;';
             const cardPad = isRoot ? (hasChildren ? '16px 42px' : '16px 12px') : (hasChildren ? '10px 42px' : '10px 12px');
 
-            html += '<div id="' + nodeId + '" class="tree-card" data-level="' + level + '" data-idx="' + idx + '" data-ids="' + ids + '" data-expanded="' + expandedByDefault + '" data-no-connector="' + (noConnector ? '1' : '0') + '" style="'
+            html += '<div id="' + nodeId + '" class="tree-card" data-level="' + level + '" data-idx="' + idx + '" data-ids="' + ids + '" data-mismatch="' + mismatchIds + '" data-expanded="' + expandedByDefault + '" data-no-connector="' + (noConnector ? '1' : '0') + '" style="'
                 + visible
                 + 'margin:4px 8px;'
                 + 'padding:' + cardPad + ';'
@@ -644,10 +646,13 @@ function renderStatusTree(response) {
                 html += '<i class="bi bi-diagram-3"></i></span>';
             }
 
-            html += '<div class="tree-card-label" style="font-size:' + (isRoot ? '0.9rem' : isRef ? '0.72rem' : '0.82rem') + ';font-weight:' + weight + ';color:#333;margin-bottom:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">' + n.label + '</div>';
+            html += '<div class="tree-card-label" style="font-size:' + (isRoot ? '0.9rem' : isRef ? '0.72rem' : '0.82rem') + ';font-weight:' + weight + ';color:' + (n.mismatch_count ? '#e65100' : '#333') + ';margin-bottom:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">' + (n.mismatch_count ? '<i class="bi bi-exclamation-triangle" style="margin-right:2px"></i>' : '') + n.label + '</div>';
             html += '<div style="font-size:' + (isRoot ? '1.5rem' : '1.3rem') + ';font-weight:700;color:#111;line-height:1.2">' + count + '</div>';
             if (sumStr) html += '<div style="font-size:0.7rem;color:#6c757d">' + sumStr + '</div>';
             if (isRef) html += '<span style="font-size:0.6rem;color:#999;font-style:italic">справочно</span>';
+            if (!isRef && n.mismatch_count) {
+                html += '<div style="margin-top:3px;font-size:0.65rem;color:#e65100"><i class="bi bi-exclamation-triangle"></i> ' + n.mismatch_count + ' шт. несоотв.</div>';
+            }
             if (!isRef && !isRoot && !['ФИКСИРОВАНИЕ', 'АСП', 'ОК.РАСЧЕТ'].includes(n.label) && (n.work_vyp || n.work_zav)) {
                 html += '<div style="margin-top:4px;padding:2px 4px;background:#e3f2fd;border-radius:4px;font-size:0.68rem;display:flex;gap:4px;align-items:center;flex-wrap:wrap">';
                 html += '<span style="color:#1565C0;font-weight:600">Работы:</span>';
@@ -838,11 +843,12 @@ function filterTree(query) {
 function filterByTreeIds(el, label) {
     const card = el.closest('.tree-card');
     const ids = (card.dataset.ids || '').split(',').filter(Boolean).map(Number);
+    const mismatchIds = (card.dataset.mismatch || '').split(',').filter(Boolean).map(Number);
     if (ids.length === 0) return;
-    applyTreeFilter(ids, label);
+    applyTreeFilter(ids, label, mismatchIds);
 }
 
-function applyTreeFilter(ids, label) {
+function applyTreeFilter(ids, label, mismatchIds) {
     const region = document.getElementById('filterRegion').value;
     const search = document.getElementById('filterSearch').value;
     const params = new URLSearchParams();
@@ -852,11 +858,14 @@ function applyTreeFilter(ids, label) {
 
     document.getElementById('kanbanMain').innerHTML = '<div class="text-center py-5"><div class="spinner-border text-primary" role="status"><span class="visually-hidden">Загрузка...</span></div></div>';
 
+    const mismatchSet = new Set(mismatchIds || []);
+
     fetch('/api/main-contracts?' + params.toString())
         .then(r => r.json())
         .then(contracts => {
             const idSet = new Set(ids);
             const filtered = contracts.filter(c => idSet.has(c.id));
+            filtered.forEach(c => c.mismatch = mismatchSet.has(c.id));
             renderKanban(filtered);
             // Show a filter indicator
             const stats = document.getElementById('mainStats');

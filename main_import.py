@@ -84,12 +84,12 @@ def to_num(val):
     if val is None or (isinstance(val, float) and np.isnan(val)):
         return None
     if isinstance(val, (int, float)):
-        return float(val)
+        return round(float(val), 2)
     s = str(val).strip()
     if not s or s == '-':
         return None
     try:
-        return float(s.replace(',', '.').replace(' ', ''))
+        return round(float(s.replace(',', '.').replace(' ', '')), 2)
     except (ValueError, TypeError):
         return None
 
