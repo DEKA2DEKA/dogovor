@@ -533,8 +533,8 @@ function renderStatusTree(response) {
     // Work track section (parallel, above main tree)
     if (workTrack && workTrack.children && workTrack.children.length > 0) {
         const wtChildren = workTrack.children;
-        html += '<div class="tree-horizontal-wrap mb-3" style="position:relative;overflow-x:auto;overflow-y:visible;background:#eef3f7">';
-        html += '<div class="tree-horizontal" style="display:flex;flex-direction:row;align-items:stretch;gap:40px;position:relative;padding:12px 0;min-height:60px">';
+        html += '<div class="tree-horizontal-wrap mb-2" style="position:relative;overflow-x:auto;overflow-y:visible;background:#eef3f7">';
+        html += '<div class="tree-horizontal" style="display:flex;flex-direction:row;align-items:stretch;gap:40px;position:relative;padding:6px 0;min-height:0">';
         html += '<svg class="tree-svg-2" style="position:absolute;top:0;left:0;width:100%;height:100%;pointer-events:none;z-index:0;overflow:visible"></svg>';
 
         // Level 0: work track root card

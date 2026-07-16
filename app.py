@@ -869,7 +869,6 @@ def _classify_legal(c):
 def _classify_work(c):
     """Определяет статус работ контракта (параллельный трек).
     Возвращает work_status_id или None.
-    Работы параллельны любому юридическому статусу внутри Исполняемые.
     """
     if c.status != 'executing':
         return None
@@ -878,9 +877,9 @@ def _classify_work(c):
     if ps_upper in ('ЖДЕМ ВЫЗОВ', 'ОЖИДАЕМ ВЫЗОВ'):
         return 'zhdem_vyzov'
     if ps_upper == 'ВЫПОЛНЕНИЕ РАБОТ':
-        if not c.work_end_date:
+        if c.work_start_date and not c.work_end_date:
             return 'raboty_vyp'
-        else:
+        elif c.work_end_date:
             return 'raboty_zav'
     return None
 
@@ -999,40 +998,33 @@ def _build_tree():
                             'children': [],
                             'contract_ids': [c.id for c in matched],
                         }
+                        # Work sub-children for ВЫПОЛНЕНИЕ РАБОТ leaf
+                        if ps_norm == 'ВЫПОЛНЕНИЕ РАБОТ':
+                            work_vyp = [c for c in matched if c.work_start_date and not c.work_end_date]
+                            work_zav = [c for c in matched if c.work_end_date]
+                            if work_vyp:
+                                leaf['children'].append({
+                                    'id': f'{bid}_{sid}_work_vyp',
+                                    'label': 'РАБОТЫ ВЫПОЛНЯЮТСЯ',
+                                    'color': '#90CAF9',
+                                    'count': len(work_vyp),
+                                    'sum': sum(c.cost_with_vat or 0 for c in work_vyp),
+                                    'children': [],
+                                    'contract_ids': [c.id for c in work_vyp],
+                                    '_reference': True,
+                                })
+                            if work_zav:
+                                leaf['children'].append({
+                                    'id': f'{bid}_{sid}_work_zav',
+                                    'label': 'РАБОТЫ ЗАВЕРШЕНЫ',
+                                    'color': '#66BB6A',
+                                    'count': len(work_zav),
+                                    'sum': sum(c.cost_with_vat or 0 for c in work_zav),
+                                    'children': [],
+                                    'contract_ids': [c.id for c in work_zav],
+                                    '_reference': True,
+                                })
                         sub_node['children'].append(leaf)
-
-                # Work refs for legal sub-statuses (show work_end_date breakdown)
-                legal_contracts = []
-                for (b, s, ps), clist in legal_groups.items():
-                    if b == bid and s == sid:
-                        legal_contracts.extend(clist)
-                if legal_contracts:
-                    work_vyp = [c for c in legal_contracts if not c.work_end_date]
-                    work_zav = [c for c in legal_contracts if c.work_end_date]
-                    if work_vyp:
-                        sub_node['children'].append({
-                            'id': f'{bid}_{sid}_work_vyp',
-                            'label': 'РАБОТЫ ВЫПОЛНЯЮТСЯ',
-                            'color': '#90CAF9',
-                            'count': len(work_vyp),
-                            'sum': sum(c.cost_with_vat or 0 for c in work_vyp),
-                            'children': [],
-                            'contract_ids': [c.id for c in work_vyp],
-                            '_reference': True,
-                            '_no_connector': True,
-                        })
-                    if work_zav:
-                        sub_node['children'].append({
-                            'id': f'{bid}_{sid}_work_zav',
-                            'label': 'РАБОТЫ ЗАВЕРШЕНЫ',
-                            'color': '#66BB6A',
-                            'count': len(work_zav),
-                            'sum': sum(c.cost_with_vat or 0 for c in work_zav),
-                            'children': [],
-                            'contract_ids': [c.id for c in work_zav],
-                            '_reference': True,
-                            '_no_connector': True,
-                        })
 
             if sub_node['children'] or is_unknown:
                 real_count = 0
