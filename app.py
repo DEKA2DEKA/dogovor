@@ -862,9 +862,17 @@ def _classify_legal(c):
             if ps_upper in match_list:
                 # ВЫПОЛНЕНИЕ РАБОТ требует погашенного аванса
                 if ps_upper == 'ВЫПОЛНЕНИЕ РАБОТ':
-                    if (c.advance_plan or 0) > 0 and c.advance_fact is not None and c.advance_fact < c.advance_plan:
+                    ap = c.advance_plan or 0
+                    af = c.advance_fact or 0
+                    advance_short = ap - af
+                    # Допуск округления 50 руб — если разница в пределах допуска, считаем оплаченным
+                    if ap > 0 and advance_short > 50:
                         # Есть долг по авансу — показываем в АВАНСИРОВАНИЕ
                         return ('ispolnyaemye', 'zaklyucheny', 'АВАНСИРОВАНИЕ')
+                    # Аванс оплачен (или в пределах допуска)
+                    if c.work_end_date:
+                        # Работы завершены — сразу в ФИКСИРОВАНИЕ
+                        return ('ispolnyaemye', 'zaklyucheny', 'ФИКСИРОВАНИЕ')
                 return ('ispolnyaemye', sid, ps_upper)
         return ('ispolnyaemye', None, ps_upper)
 
