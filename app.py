@@ -860,6 +860,11 @@ def _classify_legal(c):
             info = STATUS_REFERENCE['ispolnyaemye']['statuses'].get(sid, {})
             match_list = info.get('match', [])
             if ps_upper in match_list:
+                # ВЫПОЛНЕНИЕ РАБОТ требует погашенного аванса
+                if ps_upper == 'ВЫПОЛНЕНИЕ РАБОТ':
+                    if (c.advance_plan or 0) > 0 and c.advance_fact is not None and c.advance_fact < c.advance_plan:
+                        # Есть долг по авансу — показываем в АВАНСИРОВАНИЕ
+                        return ('ispolnyaemye', 'zaklyucheny', 'АВАНСИРОВАНИЕ')
                 return ('ispolnyaemye', sid, ps_upper)
         return ('ispolnyaemye', None, ps_upper)
 
