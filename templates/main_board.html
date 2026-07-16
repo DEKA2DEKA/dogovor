@@ -514,6 +514,7 @@ function toggleStatusTree() {
 }
 
 function loadStatusTree() {
+    document.getElementById('statusTreeContent').innerHTML = '<div class="text-center py-4"><div class="spinner-border text-primary" role="status"><span class="visually-hidden">Загрузка...</span></div></div>';
     fetch('/api/main-contracts/status-flow')
         .then(r => r.json())
         .then(data => {
@@ -644,6 +645,12 @@ function renderStatusTree(response) {
             html += '<div style="font-size:' + (isRoot ? '1.5rem' : '1.3rem') + ';font-weight:700;color:#111;line-height:1.2">' + count + '</div>';
             if (sumStr) html += '<div style="font-size:0.7rem;color:#6c757d">' + sumStr + '</div>';
             if (isRef) html += '<span style="font-size:0.6rem;color:#999;font-style:italic">справочно</span>';
+            if (!isRef && !isRoot && !['ФИКСИРОВАНИЕ', 'АСП', 'ОК.РАСЧЕТ'].includes(n.label) && (n.work_vyp || n.work_zav)) {
+                html += '<div style="margin-top:4px;padding:2px 4px;background:#e3f2fd;border-radius:4px;font-size:0.65rem;display:flex;gap:6px">';
+                html += '<span style="color:#1565C0">◉ ' + (n.work_vyp || 0) + '</span>';
+                html += '<span style="color:#2E7D32">✓ ' + (n.work_zav || 0) + '</span>';
+                html += '</div>';
+            }
             html += '</div>';
         });
 
@@ -838,6 +845,8 @@ function applyTreeFilter(ids, label) {
     params.set('tree', '1');
     if (region) params.set('region', region);
     if (search) params.set('search', search);
+
+    document.getElementById('kanbanBoard').innerHTML = '<div class="text-center py-5"><div class="spinner-border text-primary" role="status"><span class="visually-hidden">Загрузка...</span></div></div>';
 
     fetch('/api/main-contracts?' + params.toString())
         .then(r => r.json())

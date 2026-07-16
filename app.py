@@ -911,6 +911,12 @@ def _build_tree():
 
     branch_order = ['ispolnyaemye', 'zakrytye', 'ctoso', 'ne_opredelen']
 
+    def _work_stats(matched_contracts):
+        """Return (vyp_count, zav_count) for a list of contracts."""
+        vyp = sum(1 for c in matched_contracts if c.work_start_date and not c.work_end_date)
+        zav = sum(1 for c in matched_contracts if c.work_end_date)
+        return vyp, zav
+
     for bid in branch_order:
         ref = STATUS_REFERENCE.get(bid)
         if not ref:
@@ -963,8 +969,7 @@ def _build_tree():
                                 matched.append(c)
                             elif prefix_upper and ps_upper.startswith(prefix_upper):
                                 matched.append(c)
-                        if not matched:
-                            continue
+                        wv, wz = _work_stats(matched)
                         leaf = {
                             'id': f'{bid}_{sid}_{cid}',
                             'label': ci['label'],
@@ -973,6 +978,8 @@ def _build_tree():
                             'sum': sum(c.cost_with_vat or 0 for c in matched),
                             'children': [],
                             'contract_ids': [c.id for c in matched],
+                            'work_vyp': wv,
+                            'work_zav': wz,
                         }
                         sub_node['children'].append(leaf)
                 else:
@@ -985,10 +992,31 @@ def _build_tree():
                         if ps_norm not in ps_groups:
                             ps_groups[ps_norm] = []
                         ps_groups[ps_norm].extend(legal_groups[k])
-                    for ps_norm in sorted(ps_groups):
-                        matched = ps_groups[ps_norm]
-                        # Use first non-empty display label
-                        display = next((k[2] for k in leaf_keys if k[2] and k[2].upper() == ps_norm), ps_norm)
+
+                    # Use match list order if defined, otherwise sorted
+                    match_list = [m.upper() for m in info.get('match', [])]
+                    if match_list:
+                        ordered_keys = match_list
+                        # Collect unmatched contracts under Прочее
+                        unmatched = []
+                        for ps_norm in list(ps_groups.keys()):
+                            if ps_norm not in ordered_keys:
+                                unmatched.extend(ps_groups.pop(ps_norm, []))
+                    else:
+                        ordered_keys = sorted(ps_groups.keys())
+                        unmatched = []
+
+                    for ps_norm in ordered_keys:
+                        if ps_norm in ps_groups:
+                            matched = ps_groups[ps_norm]
+                        else:
+                            matched = []
+                        display = ps_norm
+                        for k in leaf_keys:
+                            if k[2] and k[2].upper() == ps_norm:
+                                display = k[2]
+                                break
+                        wv, wz = _work_stats(matched)
                         leaf = {
                             'id': f'{bid}_{sid}_{display[:20].replace(" ", "_")}',
                             'label': display,
@@ -997,36 +1025,25 @@ def _build_tree():
                             'sum': sum(c.cost_with_vat or 0 for c in matched),
                             'children': [],
                             'contract_ids': [c.id for c in matched],
+                            'work_vyp': wv,
+                            'work_zav': wz,
                         }
-                        # Work sub-children for ВЫПОЛНЕНИЕ РАБОТ leaf
-                        if ps_norm == 'ВЫПОЛНЕНИЕ РАБОТ':
-                            work_vyp = [c for c in matched if c.work_start_date and not c.work_end_date]
-                            work_zav = [c for c in matched if c.work_end_date]
-                            if work_vyp:
-                                leaf['children'].append({
-                                    'id': f'{bid}_{sid}_work_vyp',
-                                    'label': 'РАБОТЫ ВЫПОЛНЯЮТСЯ',
-                                    'color': '#90CAF9',
-                                    'count': len(work_vyp),
-                                    'sum': sum(c.cost_with_vat or 0 for c in work_vyp),
-                                    'children': [],
-                                    'contract_ids': [c.id for c in work_vyp],
-                                    '_reference': True,
-                                })
-                            if work_zav:
-                                leaf['children'].append({
-                                    'id': f'{bid}_{sid}_work_zav',
-                                    'label': 'РАБОТЫ ЗАВЕРШЕНЫ',
-                                    'color': '#66BB6A',
-                                    'count': len(work_zav),
-                                    'sum': sum(c.cost_with_vat or 0 for c in work_zav),
-                                    'children': [],
-                                    'contract_ids': [c.id for c in work_zav],
-                                    '_reference': True,
-                                })
                         sub_node['children'].append(leaf)
+                    if unmatched:
+                        wv, wz = _work_stats(unmatched)
+                        sub_node['children'].append({
+                            'id': f'{bid}_{sid}_prochee',
+                            'label': 'Прочее',
+                            'color': '#BCAAA4',
+                            'count': len(unmatched),
+                            'sum': sum(c.cost_with_vat or 0 for c in unmatched),
+                            'children': [],
+                            'contract_ids': [c.id for c in unmatched],
+                            'work_vyp': wv,
+                            'work_zav': wz,
+                        })
 
-            if sub_node['children'] or is_unknown:
+            if is_unknown or True:
                 real_count = 0
                 real_sum = 0
                 for ch in sub_node.get('children', []):
@@ -1044,11 +1061,10 @@ def _build_tree():
                 branch_node['count'] += sub_node['count']
                 branch_node['sum'] += sub_node['sum']
 
-        if branch_node['children'] or bid in ('ctoso', 'ne_opredelen'):
-            branch_node['contract_ids'] = []
-            for ch in branch_node['children']:
-                branch_node['contract_ids'].extend(ch.get('contract_ids', []))
-            tree['children'].append(branch_node)
+        branch_node['contract_ids'] = []
+        for ch in branch_node['children']:
+            branch_node['contract_ids'].extend(ch.get('contract_ids', []))
+        tree['children'].append(branch_node)
 
     # Build parallel work track (separate from main tree, not counted)
     work_track = {'id': 'work_track_root', 'label': 'РАБОТЫ', 'color': '#42A5F5',
@@ -1060,8 +1076,6 @@ def _build_tree():
     ]
     for wid, wlabel, wcolor in work_defs:
         matched = work_map.get(wid, [])
-        if not matched:
-            continue
         leaf = {
             'id': f'work_track_{wid}',
             'label': wlabel,
