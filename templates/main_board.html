@@ -591,7 +591,7 @@ function renderStatusTree(response) {
     treeLevels = [];
     flattenTree(tree, 0, treeLevels);
 
-    html += '<div class="tree-horizontal-wrap" style="position:relative;overflow-x:auto;overflow-y:visible">';
+    html += '<div class="tree-horizontal-wrap tree-main-wrap" style="position:relative;overflow-x:auto;overflow-y:visible">';
     html += '<div class="tree-horizontal" style="display:flex;flex-direction:row;align-items:stretch;gap:40px;position:relative;padding:20px 0;min-height:400px">';
     html += '<svg class="tree-svg" style="position:absolute;top:0;left:0;width:100%;height:100%;pointer-events:none;z-index:0;overflow:visible"></svg>';
 
@@ -613,11 +613,12 @@ function renderStatusTree(response) {
             const nodeId = 'tn_' + level + '_' + idx;
             const expandedByDefault = level <= 1;
             const visible = level <= 1 ? '' : 'display:none;';
+            const cardPad = isRoot ? (hasChildren ? '16px 42px' : '16px 12px') : (hasChildren ? '10px 42px' : '10px 12px');
 
             html += '<div id="' + nodeId + '" class="tree-card" data-level="' + level + '" data-idx="' + idx + '" data-ids="' + ids + '" data-expanded="' + expandedByDefault + '" data-no-connector="' + (noConnector ? '1' : '0') + '" style="'
                 + visible
                 + 'margin:4px 8px;'
-                + 'padding:' + (isRoot ? '16px 12px' : '10px 12px') + ';'
+                + 'padding:' + cardPad + ';'
                 + 'border-radius:8px;'
                 + 'background:#fff;'
                 + 'border-left:4px solid ' + cardColor + ';'
@@ -635,9 +636,8 @@ function renderStatusTree(response) {
             html += '>';
 
             if (hasChildren) {
-                const chevronIcon = expandedByDefault ? 'bi-chevron-down' : 'bi-chevron-right';
-                html += '<span class="tree-card-toggle" onclick="event.stopPropagation();toggleTreeNodeH(this)" style="position:absolute;right:4px;top:4px;cursor:pointer;color:#6c757d;font-size:0.7rem;">';
-                html += '<i class="bi ' + chevronIcon + '"></i></span>';
+                html += '<span class="tree-card-toggle" onclick="event.stopPropagation();toggleTreeNodeH(this)" style="position:absolute;right:0;top:0;bottom:0;width:26px;display:flex;align-items:center;justify-content:center;cursor:pointer;color:#90A4AE;font-size:0.8rem;border-left:1px solid #e0e0e0;">';
+                html += '<i class="bi bi-diagram-3"></i></span>';
             }
 
             html += '<div class="tree-card-label" style="font-size:' + (isRoot ? '0.9rem' : isRef ? '0.72rem' : '0.82rem') + ';font-weight:' + weight + ';color:#333;margin-bottom:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">' + n.label + '</div>';
@@ -664,7 +664,7 @@ function flattenTree(node, depth, levels) {
 function drawTreeConnectors() {
     var levels = treeLevels;
     if (!levels) return;
-    var wrap = document.querySelector('.tree-horizontal-wrap');
+    var wrap = document.querySelector('.tree-main-wrap');
     if (!wrap) return;
     var svg = wrap.querySelector('.tree-svg');
     if (!svg) return;
@@ -749,8 +749,6 @@ function toggleTreeNodeH(el) {
     });
 
     card.dataset.expanded = expanded ? 'false' : 'true';
-    icon.classList.toggle('bi-chevron-right');
-    icon.classList.toggle('bi-chevron-down');
 
     requestAnimationFrame(function () { drawTreeConnectors(); });
 }
@@ -759,11 +757,6 @@ function collapseNodeSubtree(level, idx) {
     var card = document.getElementById('tn_' + level + '_' + idx);
     if (!card) return;
     card.dataset.expanded = 'false';
-    var chevron = card.querySelector('.tree-card-toggle i');
-    if (chevron) {
-        chevron.classList.remove('bi-chevron-down');
-        chevron.classList.add('bi-chevron-right');
-    }
     var node = treeLevels[level][idx];
     if (!node || !node.children) return;
     var nextLevel = document.querySelector('.tree-level[data-level="' + (level + 1) + '"]');
@@ -791,11 +784,6 @@ function collapseDescendants(level, idx) {
         if (!childCard) return;
         childCard.style.display = 'none';
         childCard.dataset.expanded = 'false';
-        var chevron = childCard.querySelector('.tree-card-toggle i');
-        if (chevron) {
-            chevron.classList.remove('bi-chevron-down');
-            chevron.classList.add('bi-chevron-right');
-        }
         collapseDescendants(level + 1, childIdx);
     });
 }
@@ -809,11 +797,6 @@ function filterTree(query) {
             var lvl = parseInt(c.dataset.level);
             c.style.display = lvl <= 1 ? '' : 'none';
             c.dataset.expanded = lvl <= 1 ? 'true' : 'false';
-            var ch = c.querySelector('.tree-card-toggle i');
-            if (ch) {
-                if (lvl <= 1) { ch.classList.remove('bi-chevron-right'); ch.classList.add('bi-chevron-down'); }
-                else { ch.classList.remove('bi-chevron-down'); ch.classList.add('bi-chevron-right'); }
-            }
         });
         requestAnimationFrame(function () { drawTreeConnectors(); });
         return;
@@ -833,8 +816,6 @@ function filterTree(query) {
             while (el) {
                 el.style.display = '';
                 el.dataset.expanded = 'true';
-                var ch = el.querySelector('.tree-card-toggle i');
-                if (ch) { ch.classList.remove('bi-chevron-right'); ch.classList.add('bi-chevron-down'); }
                 el = el.parentElement.closest('.tree-card');
             }
         });
