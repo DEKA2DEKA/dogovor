@@ -75,7 +75,7 @@
             <i class="bi bi-eye"></i> ЦТОСО
         </button>
         <button class="btn btn-sm btn-outline-info" onclick="toggleStatusTree()">
-            <i class="bi bi-diagram-2"></i> Дерево статусов
+            <i class="bi bi-diagram-2"></i> Схема этапов договоров и работ
         </button>
     </div>
 
@@ -535,7 +535,7 @@ function renderStatusTree(response) {
     if (workTrack && workTrack.children && workTrack.children.length > 0) {
         const wtChildren = workTrack.children;
         html += '<div class="tree-horizontal-wrap mb-2" style="position:relative;overflow-x:auto;overflow-y:visible;background:#eef3f7">';
-        html += '<div class="tree-horizontal" style="display:flex;flex-direction:row;align-items:stretch;gap:40px;position:relative;padding:6px 0;min-height:0">';
+        html += '<div class="tree-horizontal" style="display:flex;flex-direction:row;align-items:stretch;gap:40px;position:relative;padding:2px 0;min-height:0">';
         html += '<svg class="tree-svg-2" style="position:absolute;top:0;left:0;width:100%;height:100%;pointer-events:none;z-index:0;overflow:visible"></svg>';
 
         // Level 0: work track root card
@@ -612,7 +612,7 @@ function renderStatusTree(response) {
             const isRoot = level === 0;
             const cardWidth = isRoot ? '140px' : 'auto';
             const nodeId = 'tn_' + level + '_' + idx;
-            const expandedByDefault = level <= 1;
+            const expandedByDefault = level <= 0;
             const visible = level <= 1 ? '' : 'display:none;';
             const cardPad = isRoot ? (hasChildren ? '16px 42px' : '16px 12px') : (hasChildren ? '10px 42px' : '10px 12px');
 
@@ -646,9 +646,10 @@ function renderStatusTree(response) {
             if (sumStr) html += '<div style="font-size:0.7rem;color:#6c757d">' + sumStr + '</div>';
             if (isRef) html += '<span style="font-size:0.6rem;color:#999;font-style:italic">справочно</span>';
             if (!isRef && !isRoot && !['ФИКСИРОВАНИЕ', 'АСП', 'ОК.РАСЧЕТ'].includes(n.label) && (n.work_vyp || n.work_zav)) {
-                html += '<div style="margin-top:4px;padding:2px 4px;background:#e3f2fd;border-radius:4px;font-size:0.65rem;display:flex;gap:6px">';
-                html += '<span style="color:#1565C0">◉ ' + (n.work_vyp || 0) + '</span>';
-                html += '<span style="color:#2E7D32">✓ ' + (n.work_zav || 0) + '</span>';
+                html += '<div style="margin-top:4px;padding:2px 4px;background:#e3f2fd;border-radius:4px;font-size:0.68rem;display:flex;gap:4px;align-items:center;flex-wrap:wrap">';
+                html += '<span style="color:#1565C0;font-weight:600">Работы:</span>';
+                html += '<span class="badge" style="font-size:0.63rem;background:#42A5F5;color:#fff">◉ ' + (n.work_vyp || 0) + '</span>';
+                html += '<span class="badge" style="font-size:0.63rem;background:#66BB6A;color:#fff">✓ ' + (n.work_zav || 0) + '</span>';
                 html += '</div>';
             }
             html += '</div>';
@@ -803,7 +804,7 @@ function filterTree(query) {
         allCards.forEach(function (c) {
             var lvl = parseInt(c.dataset.level);
             c.style.display = lvl <= 1 ? '' : 'none';
-            c.dataset.expanded = lvl <= 1 ? 'true' : 'false';
+            c.dataset.expanded = lvl <= 0 ? 'true' : 'false';
         });
         requestAnimationFrame(function () { drawTreeConnectors(); });
         return;
