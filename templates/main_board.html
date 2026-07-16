@@ -847,7 +847,7 @@ function applyTreeFilter(ids, label) {
     if (region) params.set('region', region);
     if (search) params.set('search', search);
 
-    document.getElementById('kanbanBoard').innerHTML = '<div class="text-center py-5"><div class="spinner-border text-primary" role="status"><span class="visually-hidden">Загрузка...</span></div></div>';
+    document.getElementById('kanbanMain').innerHTML = '<div class="text-center py-5"><div class="spinner-border text-primary" role="status"><span class="visually-hidden">Загрузка...</span></div></div>';
 
     fetch('/api/main-contracts?' + params.toString())
         .then(r => r.json())
