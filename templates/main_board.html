@@ -243,31 +243,16 @@ function renderContractCard(c) {
     const dsMap = {};
     items.forEach(item => {
         const key = item.contract_number || '—';
-        if (!dsMap[key]) dsMap[key] = { count: 0, cost: 0 };
-        dsMap[key].count++;
-        dsMap[key].cost += parseFloat(item.cost_with_vat) || 0;
+        dsMap[key] = true;
     });
     const dsEntries = Object.keys(dsMap);
     const dsHtml = dsEntries.map(ds => {
-        const info = dsMap[ds];
         return `<div class="main-item-row">
             <div class="d-flex justify-content-between small">
                 <span class="text-truncate flex-grow-1">${ds}</span>
-                <span class="text-nowrap ms-1">${info.cost ? info.cost.toLocaleString('ru-RU') + ' ₽' : ''}</span>
             </div>
-            <div class="small text-muted">Пунктов: ${info.count}</div>
         </div>`;
     }).join('');
-
-    const itemsHtml = items.map(item => `
-        <div class="main-item-row" onclick="showMainContract(${item.id})" title="${item.object_work || ''}">
-            <div class="d-flex justify-content-between small">
-                <span class="text-truncate flex-grow-1">${item.object_work || '—'}</span>
-                <span class="text-nowrap ms-1">${item.cost_with_vat ? item.cost_with_vat.toLocaleString('ru-RU') + ' ₽' : ''}</span>
-            </div>
-            <div class="small text-muted">Срок: ${fmtDate(item.work_end_date)}</div>
-        </div>
-    `).join('');
 
     const ps = c.parsed_status && c.parsed_status !== 'не определен' ? c.parsed_status : null;
     const cp = c.cipher && c.cipher !== 'не определен' ? c.cipher : null;
@@ -297,12 +282,6 @@ function renderContractCard(c) {
             </button>
             <div id="ds-${c.id}" class="d-none mt-1">
                 ${dsHtml}
-            </div>
-            <button class="btn btn-sm btn-link p-0 text-decoration-none main-toggle-items" data-target="items-${c.id}" style="font-size:0.75rem">
-                <i class="bi bi-chevron-down"></i> Работы (${items.length})
-            </button>
-            <div id="items-${c.id}" class="d-none mt-1">
-                ${itemsHtml}
             </div>
         </div>
         ` : ''}
@@ -398,62 +377,26 @@ function renderMainDetail(c, allContracts) {
             </div>`;
 
     if (isParent && c.items && c.items.length > 0) {
-        const dsMap = {};
+        const dsSet = new Set();
         c.items.forEach(item => {
             const key = item.contract_number || '—';
-            if (!dsMap[key]) dsMap[key] = { count: 0, cost: 0, deadline: '' };
-            dsMap[key].count++;
-            dsMap[key].cost += parseFloat(item.cost_with_vat) || 0;
-            if (!dsMap[key].deadline && item.contract_deadline) dsMap[key].deadline = item.contract_deadline;
+            dsSet.add(key);
         });
-        const dsEntries = Object.entries(dsMap);
+        const dsList = [...dsSet];
         body += `<div class="card mb-2">
             <div class="card-body py-2">
-                <h6 class="small text-muted mb-2">ДС (${dsEntries.length})</h6>
+                <h6 class="small text-muted mb-2">ДС (${dsList.length})</h6>
                 <div class="table-responsive">
                     <table class="table table-sm table-hover small mb-0">
                         <thead><tr>
                             <th>№</th>
                             <th>Номер ДС</th>
-                            <th>Срок</th>
-                            <th>Стоимость с НДС</th>
-                            <th>Пунктов ВИ</th>
                         </tr></thead>
                         <tbody>
-                        ${dsEntries.map(([ds, info], i) => `
+                        ${dsList.map((ds, i) => `
                             <tr>
                                 <td>${i + 1}</td>
                                 <td>${ds}</td>
-                                <td>${fmtDate(info.deadline)}</td>
-                                <td>${info.cost ? fmt(info.cost) + ' ₽' : '—'}</td>
-                                <td>${info.count}</td>
-                            </tr>
-                        `).join('')}
-                        </tbody>
-                    </table>
-                </div>
-            </div>
-        </div>`;
-        body += `<div class="card mb-2">
-            <div class="card-body py-2">
-                <h6 class="small text-muted mb-2">Пункты ВИ (${c.items.length})</h6>
-                <div class="table-responsive">
-                    <table class="table table-sm table-hover small mb-0">
-                        <thead><tr>
-                            <th>Работа</th>
-                            <th>Срок</th>
-                            <th>Окончание</th>
-                            <th>Стоимость</th>
-                            <th>Объём</th>
-                        </tr></thead>
-                        <tbody>
-                        ${c.items.map(item => `
-                            <tr onclick="showMainContract(${item.id})" style="cursor:pointer">
-                                <td>${item.object_work || '—'}</td>
-                                <td>${fmtDate(item.contract_deadline)}</td>
-                                <td>${fmtDate(item.work_end_date)}</td>
-                                <td>${item.cost_with_vat ? fmt(item.cost_with_vat) + ' ₽' : '—'}</td>
-                                <td>${item.completed_volume != null ? (item.completed_volume * 100).toFixed(0) + '%' : '—'}</td>
                             </tr>
                         `).join('')}
                         </tbody>
