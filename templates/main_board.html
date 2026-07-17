@@ -260,7 +260,7 @@ function renderContractCard(c) {
                 <span class="text-truncate flex-grow-1">${item.object_work || '—'}</span>
                 <span class="text-nowrap ms-1">${item.cost_with_vat ? item.cost_with_vat.toLocaleString('ru-RU') + ' ₽' : ''}</span>
             </div>
-            <div class="small text-muted">Срок: ${fmtDate(item.work_end_date)}</div>
+            <div class="small text-muted">Срок: ${fmtDate(item.work_end_date)}${item.work_start_date ? ', Начало: ' + fmtDate(item.work_start_date) : ''}</div>
         </div>
     `).join('');
 
@@ -428,6 +428,7 @@ function renderMainDetail(c, allContracts) {
                         <thead><tr>
                             <th>Работа</th>
                             <th>Срок</th>
+                            <th>Начало</th>
                             <th>Окончание</th>
                             <th>Стоимость</th>
                             <th>Объём</th>
@@ -437,6 +438,7 @@ function renderMainDetail(c, allContracts) {
                             <tr onclick="showMainContract(${item.id})" style="cursor:pointer">
                                 <td>${item.object_work || '—'}</td>
                                 <td>${fmtDate(item.contract_deadline)}</td>
+                                <td>${fmtDate(item.work_start_date)}</td>
                                 <td>${fmtDate(item.work_end_date)}</td>
                                 <td>${item.cost_with_vat ? fmt(item.cost_with_vat) + ' ₽' : '—'}</td>
                                 <td>${item.completed_volume != null ? (item.completed_volume * 100).toFixed(0) + '%' : '—'}</td>
