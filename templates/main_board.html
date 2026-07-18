@@ -358,7 +358,7 @@ function showMainContract(id) {
 
 function renderMainDetail(c, allContracts) {
     const isParent = !c.parent_id;
-    document.getElementById('mainModalTitle').textContent = isParent ? `Договор ${c.contract_number || 'б/н'}` : `Работа: ${c.object_work || 'б/н'}`;
+    document.getElementById('mainModalTitle').textContent = isParent ? `наименование договора: ${c.contract_number || 'б/н'}` : `Работа: ${c.object_work || 'б/н'}`;
     const f = (label, val) => `<div class="modal-detail-label">${label}</div><div class="modal-detail-value">${val ?? '—'}</div>`;
     const f6 = (label, val) => `<div class="col-6">${f(label, val)}</div>`;
     const fmt = v => typeof v === 'number' && !Number.isInteger(v) ? v.toFixed(2) : v;
