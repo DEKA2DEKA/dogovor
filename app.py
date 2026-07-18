@@ -720,8 +720,11 @@ def api_main_validate():
 def api_main_stats():
     parents = MainContract.query.filter(MainContract.parent_id.is_(None))
     by_status = {}
+    cost_by_status = {}
     for s in MAIN_STATUSES:
-        by_status[s] = parents.filter(MainContract.status == s).count()
+        q = parents.filter(MainContract.status == s)
+        by_status[s] = q.count()
+        cost_by_status[s] = db.session.query(db.func.sum(MainContract.cost_with_vat)).filter(MainContract.parent_id.is_(None), MainContract.status == s).scalar() or 0
     by_region = {}
     for r in MAIN_REGIONS:
         by_region[r] = parents.filter(MainContract.region == r).count()
@@ -753,6 +756,7 @@ def api_main_stats():
         'total': total,
         'total_items': total_items,
         'by_status': by_status,
+        'cost_by_status': cost_by_status,
         'by_region': by_region,
         'cost_sum': cost_sum,
         'ds_remaining_sum': ds_remaining_sum,

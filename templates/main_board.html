@@ -140,20 +140,17 @@ function loadMainStats() {
             const order = ['executing', 'closed'];
             order.forEach(key => {
                 const count = data.by_status[key] || 0;
+                const cost = data.cost_by_status[key] || 0;
                 html += `<div class="stat-pill" style="border-left:4px solid ${STATUS_COLORS[key] || '#6c757d'}">
                     <div class="fs-5 fw-bold">${count}</div>
                     <div class="small text-muted">${STATUS_LABELS[key] || key}</div>
-                    <div class="small text-secondary">+${data.total_items || 0} работ</div>
+                    <div class="small text-secondary">${cost.toLocaleString('ru-RU')} ₽</div>
                 </div>`;
             });
             html += `<div class="stat-pill stat-pill-ctoso" onclick="toggleCtoso()" style="cursor:pointer;border-left:4px solid ${STATUS_COLORS['ctoso'] || '#6c757d'}">
                 <div class="fs-5 fw-bold">${data.by_status['ctoso'] || 0}</div>
                 <div class="small text-muted">${STATUS_LABELS['ctoso'] || 'ЦТОСО'}</div>
-                <div class="small ${ctosoVisible ? 'text-primary' : 'text-secondary'}">${ctosoVisible ? '✓ показан' : 'показать'}</div>
-            </div>`;
-            html += `<div class="stat-pill">
-                <div class="fs-5 fw-bold">${data.cost_sum.toLocaleString('ru-RU')} ₽</div>
-                <div class="small text-muted">Общая цена контракта с НДС</div>
+                <div class="small text-secondary">${(data.cost_by_status['ctoso'] || 0).toLocaleString('ru-RU')} ₽</div>
             </div>`;
             html += `<div class="stat-pill">
                 <div class="fs-5 fw-bold">${data.ds_remaining_sum.toLocaleString('ru-RU')} ₽</div>
