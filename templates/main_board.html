@@ -275,8 +275,10 @@ function renderContractCard(c) {
 
     const dsMap = {};
     items.forEach(item => {
-        const key = item.contract_number || '—';
-        dsMap[key] = true;
+        const cn = (item.contract_number || '').trim().toLowerCase();
+        if (cn.startsWith('дс')) {
+            dsMap[item.contract_number] = true;
+        }
     });
     const dsEntries = Object.keys(dsMap);
     const dsHtml = dsEntries.map(ds => {
@@ -320,12 +322,14 @@ function renderContractCard(c) {
         </div>
         ${items.length > 0 ? `
         <div class="px-2 pb-1">
+            ${dsEntries.length > 0 ? `
             <button class="btn btn-sm btn-link p-0 text-decoration-none main-toggle-items" data-target="ds-${c.id}" style="font-size:0.75rem">
                 <i class="bi bi-chevron-down"></i> ДС (${dsEntries.length})
             </button>
             <div id="ds-${c.id}" class="d-none mt-1">
                 ${dsHtml}
             </div>
+            ` : ''}
             <button class="btn btn-sm btn-link p-0 text-decoration-none main-toggle-items" data-target="items-${c.id}" style="font-size:0.75rem">
                 <i class="bi bi-chevron-down"></i> Работы (${items.length})
             </button>
@@ -428,31 +432,35 @@ function renderMainDetail(c, allContracts) {
     if (isParent && c.items && c.items.length > 0) {
         const dsSet = new Set();
         c.items.forEach(item => {
-            const key = item.contract_number || '—';
-            dsSet.add(key);
+            const cn = (item.contract_number || '').trim().toLowerCase();
+            if (cn.startsWith('дс')) {
+                dsSet.add(item.contract_number);
+            }
         });
         const dsList = [...dsSet];
-        body += `<div class="card mb-2">
-            <div class="card-body py-2">
-                <h6 class="small text-muted mb-2">ДС (${dsList.length})</h6>
-                <div class="table-responsive">
-                    <table class="table table-sm table-hover small mb-0">
-                        <thead><tr>
-                            <th>№</th>
-                            <th>Номер ДС</th>
-                        </tr></thead>
-                        <tbody>
-                        ${dsList.map((ds, i) => `
-                            <tr>
-                                <td>${i + 1}</td>
-                                <td>${ds}</td>
-                            </tr>
-                        `).join('')}
-                        </tbody>
-                    </table>
+        if (dsList.length > 0) {
+            body += `<div class="card mb-2">
+                <div class="card-body py-2">
+                    <h6 class="small text-muted mb-2">ДС (${dsList.length})</h6>
+                    <div class="table-responsive">
+                        <table class="table table-sm table-hover small mb-0">
+                            <thead><tr>
+                                <th>№</th>
+                                <th>Номер ДС</th>
+                            </tr></thead>
+                            <tbody>
+                            ${dsList.map((ds, i) => `
+                                <tr>
+                                    <td>${i + 1}</td>
+                                    <td>${ds}</td>
+                                </tr>
+                            `).join('')}
+                            </tbody>
+                        </table>
+                    </div>
                 </div>
-            </div>
-        </div>`;
+            </div>`;
+        }
         body += `<div class="card mb-2">
             <div class="card-body py-2">
                 <h6 class="small text-muted mb-2">Пункты ВИ (${c.items.length})</h6>
