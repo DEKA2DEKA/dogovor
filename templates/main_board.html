@@ -272,7 +272,7 @@ function renderKanban(contracts) {
 function renderContractCard(c) {
     const cost = c.cost_with_vat ? Number(c.cost_with_vat).toLocaleString('ru-RU') + ' ₽' : '';
     const now = new Date();
-    const pd = s => { if (!s) return null; const m = s.match(/(\d{1,2})[.\-\/](\d{1,2})[.\-\/](\d{4})/); return m ? new Date(+m[3], +m[2] - 1, +m[1]) : null; };
+    const pd = s => { if (!s) return null; const m = s.match(/(\d{1,2})[.\-\/](\d{1,2})[.\-\/](\d{4})/) || s.match(/(\d{4})[.\-\/](\d{1,2})[.\-\/](\d{1,2})/); return m ? (m[1].length > 2 ? new Date(+m[1], +m[2] - 1, +m[3]) : new Date(+m[3], +m[2] - 1, +m[1])) : null; };
     const cd = pd(c.contract_deadline), we = pd(c.work_end_date);
     const deadlineIssue = (cd && we && we > cd) || (cd && !we && cd < now);
     const items = c.items || [];
@@ -376,7 +376,7 @@ function renderMainDetail(c, allContracts) {
         if (isNaN(n)) return v;
         return n.toLocaleString('ru-RU', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + ' ₽';
     };
-    const parseDate = s => { if (!s) return null; const m = s.match(/(\d{1,2})[.\-\/](\d{1,2})[.\-\/](\d{4})/); return m ? new Date(+m[3], +m[2] - 1, +m[1]) : null; };
+    const parseDate = s => { if (!s) return null; const m = s.match(/(\d{1,2})[.\-\/](\d{1,2})[.\-\/](\d{4})/) || s.match(/(\d{4})[.\-\/](\d{1,2})[.\-\/](\d{1,2})/); return m ? (m[1].length > 2 ? new Date(+m[1], +m[2] - 1, +m[3]) : new Date(+m[3], +m[2] - 1, +m[1])) : null; };
     const now = new Date();
     const contractDeadline = parseDate(c.contract_deadline);
     const workStart = parseDate(c.work_start_date);
