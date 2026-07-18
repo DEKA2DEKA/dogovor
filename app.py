@@ -726,6 +726,7 @@ def api_main_stats():
     for r in MAIN_REGIONS:
         by_region[r] = parents.filter(MainContract.region == r).count()
     cost_sum = db.session.query(db.func.sum(MainContract.cost_with_vat)).filter(MainContract.parent_id.is_(None)).scalar() or 0
+    ds_remaining_sum = db.session.query(db.func.sum(MainContract.ds_remaining)).filter(MainContract.parent_id.is_(None)).scalar() or 0
     total = parents.count()
     total_items = MainContract.query.filter(MainContract.parent_id.isnot(None)).count()
 
@@ -754,6 +755,7 @@ def api_main_stats():
         'by_status': by_status,
         'by_region': by_region,
         'cost_sum': cost_sum,
+        'ds_remaining_sum': ds_remaining_sum,
         'deadline_warnings': deadline_warnings,
         'last_import': last_import,
     })

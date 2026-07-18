@@ -153,7 +153,11 @@ function loadMainStats() {
             </div>`;
             html += `<div class="stat-pill">
                 <div class="fs-5 fw-bold">${data.cost_sum.toLocaleString('ru-RU')} ₽</div>
-                <div class="small text-muted">Всего стоимость</div>
+                <div class="small text-muted">Общая цена контракта с НДС</div>
+            </div>`;
+            html += `<div class="stat-pill">
+                <div class="fs-5 fw-bold">${data.ds_remaining_sum.toLocaleString('ru-RU')} ₽</div>
+                <div class="small text-muted">Остаток ДС не полученных</div>
             </div>`;
             html += '</div>';
             document.getElementById('mainStats').innerHTML = html;
