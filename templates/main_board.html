@@ -270,7 +270,7 @@ function renderKanban(contracts) {
 }
 
 function renderContractCard(c) {
-    const cost = c.cost_with_vat ? c.cost_with_vat.toLocaleString('ru-RU') + ' ₽' : '';
+    const cost = c.cost_with_vat ? Number(c.cost_with_vat).toLocaleString('ru-RU') + ' ₽' : '';
     const items = c.items || [];
 
     const dsMap = {};
@@ -293,7 +293,7 @@ function renderContractCard(c) {
         <div class="main-item-row" onclick="showMainContract(${item.id})" title="${item.object_work || ''}">
             <div class="d-flex justify-content-between small">
                 <span class="text-truncate flex-grow-1">${item.object_work || '—'}</span>
-                <span class="text-nowrap ms-1">${item.cost_with_vat ? item.cost_with_vat.toLocaleString('ru-RU') + ' ₽' : ''}</span>
+                <span class="text-nowrap ms-1">${item.cost_with_vat ? Number(item.cost_with_vat).toLocaleString('ru-RU') + ' ₽' : ''}</span>
             </div>
             <div class="small text-muted">Срок: ${fmtDate(item.work_end_date)}${item.work_start_date ? ', Начало: ' + fmtDate(item.work_start_date) : ''}</div>
         </div>
@@ -314,7 +314,7 @@ function renderContractCard(c) {
                     <div class="d-flex gap-1 mt-1 flex-wrap">
                         ${ps ? `<span class="badge bg-info" style="font-size:0.63rem">${ps}</span>` : ''}
                         ${cp ? `<span class="badge bg-warning text-dark" style="font-size:0.63rem">${cp}</span>` : ''}
-                        ${advanceDiff ? `<span class="badge bg-warning-subtle text-warning border border-warning" style="font-size:0.6rem" title="Суммы аванса план (${c.advance_plan || 0} ₽) и факт (${c.advance_fact || 0} ₽) не совпадают"><i class="bi bi-exclamation-triangle"></i> Аванс</span>` : ''}
+                        ${advanceDiff ? `<span class="badge bg-warning-subtle text-warning border border-warning" style="font-size:0.6rem" title="Суммы аванса план (${Number(c.advance_plan || 0).toLocaleString('ru-RU')} ₽) и факт (${Number(c.advance_fact || 0).toLocaleString('ru-RU')} ₽) не совпадают"><i class="bi bi-exclamation-triangle"></i> Аванс</span>` : ''}
                         ${c.mismatch ? `<span class="badge bg-warning-subtle text-warning border border-warning" style="font-size:0.6rem" title="Статус в примечаниях (${c.parsed_status || '—'}) не совпадает с расчётным"><i class="bi bi-exclamation-triangle"></i> Статус</span>` : ''}
                     </div>
                 </div>
@@ -365,7 +365,20 @@ function renderMainDetail(c, allContracts) {
     document.getElementById('mainModalTitle').textContent = isParent ? `наименование договора: ${c.contract_number || 'б/н'}` : `Работа: ${c.object_work || 'б/н'}`;
     const f = (label, val) => `<div class="modal-detail-label">${label}</div><div class="modal-detail-value">${val ?? '—'}</div>`;
     const f6 = (label, val) => `<div class="col-6">${f(label, val)}</div>`;
-    const fmt = v => typeof v === 'number' && !Number.isInteger(v) ? v.toFixed(2) : v;
+    const fmt = v => {
+        if (v == null) return '—';
+        const n = typeof v === 'number' ? v : parseFloat(v);
+        if (isNaN(n)) return v;
+        return n.toLocaleString('ru-RU', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + ' ₽';
+    };
+    const parseDate = s => { if (!s) return null; const m = s.match(/(\d{1,2})[.\-\/](\d{1,2})[.\-\/](\d{4})/); return m ? new Date(+m[3], +m[2] - 1, +m[1]) : null; };
+    const now = new Date();
+    const contractDeadline = parseDate(c.contract_deadline);
+    const workStart = parseDate(c.work_start_date);
+    const workEnd = parseDate(c.work_end_date);
+    const cdStyle = (contractDeadline && !workEnd && contractDeadline < now) ? 'color:#d32f2f;font-weight:600' : '';
+    const weStyle = (contractDeadline && workEnd && workEnd > contractDeadline) ? 'color:#d32f2f;font-weight:600' : '';
+    const datesLine = `<span style="${cdStyle}">Срок: ${fmtDate(c.contract_deadline)}</span> | <span>Начало: ${fmtDate(c.work_start_date)}</span> | <span style="${weStyle}">Окончание: ${fmtDate(c.work_end_date)}</span>`;
 
     let body = `<div class="row">
         <div class="col-md-8">
@@ -374,7 +387,7 @@ function renderMainDetail(c, allContracts) {
                     <div class="d-flex gap-2 mb-2">
                         <span class="badge" style="background:${STATUS_COLORS[c.status] || '#6c757d'}">${STATUS_LABELS[c.status] || c.status}</span>
                         <span class="badge bg-secondary">${c.region || ''}</span>
-                        ${(c.advance_plan || 0) !== (c.advance_fact || 0) ? `<span class="badge bg-warning-subtle text-warning border border-warning"><i class="bi bi-exclamation-triangle"></i> Суммы аванса план (${c.advance_plan || 0} ₽) и факт (${c.advance_fact || 0} ₽) не совпадают</span>` : ''}
+                        ${(c.advance_plan || 0) !== (c.advance_fact || 0) ? `<span class="badge bg-warning-subtle text-warning border border-warning"><i class="bi bi-exclamation-triangle"></i> Суммы аванса план (${Number(c.advance_plan || 0).toLocaleString('ru-RU')} ₽) и факт (${Number(c.advance_fact || 0).toLocaleString('ru-RU')} ₽) не совпадают</span>` : ''}
                     </div>
                     ${isParent ? f('Заказчик', c.customer) : ''}
                     ${f('Номер договора/ДС', c.contract_number)}
@@ -383,21 +396,17 @@ function renderMainDetail(c, allContracts) {
                     ${f('Шифр договора', c.cipher)}
                     <details class="mt-2" open>
                         <summary class="fw-bold small text-muted">Сроки</summary>
-                        <div class="row mt-1">
-                            ${f6('Срок по договору', fmtDate(c.contract_deadline))}
-                            ${f6('Начало работ', fmtDate(c.work_start_date))}
-                            ${f6('Окончание работ', fmtDate(c.work_end_date))}
-                        </div>
+                        <div class="mt-1 small">${datesLine}</div>
                     </details>
                     <details class="mt-2">
                         <summary class="fw-bold small text-muted">Финансы</summary>
                         <div class="row mt-1">
-                            ${f6('Стоимость без НДС', c.cost_no_vat ? fmt(c.cost_no_vat) + ' ₽' : '—')}
-                            ${f6('Стоимость с НДС', c.cost_with_vat ? fmt(c.cost_with_vat) + ' ₽' : '—')}
-                            ${f6('Аванс план', c.advance_plan ? fmt(c.advance_plan) + ' ₽' : '—')}
-                            ${f6('Аванс факт', c.advance_fact ? fmt(c.advance_fact) + ' ₽' : '—')}
-                            ${f6('Всего ДС', c.balance_ds_total ? fmt(c.balance_ds_total) + ' ₽' : '—')}
-                            ${f6('Остаток ДС', c.ds_remaining ? fmt(c.ds_remaining) + ' ₽' : '—')}
+                            ${f6('Стоимость без НДС', fmt(c.cost_no_vat))}
+                            ${f6('Стоимость с НДС', fmt(c.cost_with_vat))}
+                            ${f6('Аванс план', fmt(c.advance_plan))}
+                            ${f6('Аванс факт', fmt(c.advance_fact))}
+                            ${f6('Всего ДС', fmt(c.balance_ds_total))}
+                            ${f6('Остаток ДС', fmt(c.ds_remaining))}
                         </div>
                     </details>
                     <details class="mt-2">
@@ -407,10 +416,10 @@ function renderMainDetail(c, allContracts) {
                             ${f6('Трудоёмкость факт', fmt(c.labor_fact))}
                             ${f6('Выполненный объём', c.completed_volume != null ? (c.completed_volume * 100).toFixed(1) + '%' : '—')}
                             ${f6('Освоено', c.mastered_percent != null ? (c.mastered_percent * 100).toFixed(1) + '%' : '—')}
-                            ${f6('ЗИП план', c.zip_plan ? fmt(c.zip_plan) : '—')}
-                            ${f6('ЗИП факт', c.zip_fact ? fmt(c.zip_fact) : '—')}
-                            ${f6('Командировки план', c.travel_plan ? fmt(c.travel_plan) : '—')}
-                            ${f6('Командировки факт', c.travel_fact ? fmt(c.travel_fact) : '—')}
+                            ${f6('ЗИП план', fmt(c.zip_plan))}
+                            ${f6('ЗИП факт', fmt(c.zip_fact))}
+                            ${f6('Командировки план', fmt(c.travel_plan))}
+                            ${f6('Командировки факт', fmt(c.travel_fact))}
                         </div>
                     </details>
                     <details class="mt-2">
@@ -481,7 +490,7 @@ function renderMainDetail(c, allContracts) {
                                 <td>${fmtDate(item.contract_deadline)}</td>
                                 <td>${fmtDate(item.work_start_date)}</td>
                                 <td>${fmtDate(item.work_end_date)}</td>
-                                <td>${item.cost_with_vat ? fmt(item.cost_with_vat) + ' ₽' : '—'}</td>
+                                <td>${fmt(item.cost_with_vat)}</td>
                                 <td>${item.completed_volume != null ? (item.completed_volume * 100).toFixed(0) + '%' : '—'}</td>
                             </tr>
                         `).join('')}
