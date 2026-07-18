@@ -271,6 +271,10 @@ function renderKanban(contracts) {
 
 function renderContractCard(c) {
     const cost = c.cost_with_vat ? Number(c.cost_with_vat).toLocaleString('ru-RU') + ' ₽' : '';
+    const now = new Date();
+    const pd = s => { if (!s) return null; const m = s.match(/(\d{1,2})[.\-\/](\d{1,2})[.\-\/](\d{4})/); return m ? new Date(+m[3], +m[2] - 1, +m[1]) : null; };
+    const cd = pd(c.contract_deadline), we = pd(c.work_end_date);
+    const deadlineIssue = (cd && we && we > cd) || (cd && !we && cd < now);
     const items = c.items || [];
 
     const dsMap = {};
@@ -314,6 +318,7 @@ function renderContractCard(c) {
                     <div class="d-flex gap-1 mt-1 flex-wrap">
                         ${ps ? `<span class="badge bg-info" style="font-size:0.63rem">${ps}</span>` : ''}
                         ${cp ? `<span class="badge bg-warning text-dark" style="font-size:0.63rem">${cp}</span>` : ''}
+                        ${deadlineIssue ? `<span class="badge bg-danger" style="font-size:0.6rem">Срок!</span>` : ''}
                         ${advanceDiff ? `<span class="badge bg-warning-subtle text-warning border border-warning" style="font-size:0.6rem" title="Суммы аванса план (${Number(c.advance_plan || 0).toLocaleString('ru-RU')} ₽) и факт (${Number(c.advance_fact || 0).toLocaleString('ru-RU')} ₽) не совпадают"><i class="bi bi-exclamation-triangle"></i> Аванс</span>` : ''}
                         ${c.mismatch ? `<span class="badge bg-warning-subtle text-warning border border-warning" style="font-size:0.6rem" title="Статус в примечаниях (${c.parsed_status || '—'}) не совпадает с расчётным"><i class="bi bi-exclamation-triangle"></i> Статус</span>` : ''}
                     </div>
